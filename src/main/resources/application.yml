@@ -6,12 +6,62 @@ spring:
     name: trade-market-service
 
   datasource:
-    url: jdbc:mysql://host.docker.internal:3307/tradding_db
+    url: jdbc:mysql://localhost:3306/tradding_db
     username: root
-    password: root
+    password: ellenverma
+    driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
+    open-in-view: false
+    show-sql: true
     hibernate:
       ddl-auto: update
-    show-sql: true
-    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        format_sql: true
+
+  kafka:
+    bootstrap-servers: localhost:9092
+
+    consumer:
+      group-id: market-service
+      auto-offset-reset: latest
+      enable-auto-commit: true
+
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+
+      properties:
+        spring.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+
+        spring.json.trusted.packages: "*"
+        spring.json.use.type.headers: false
+
+        # Change this package if your TickDto is elsewhere
+        spring.json.value.default.type: com.trade.market.dto.TickDto
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+      properties:
+        spring.json.add.type.headers: false
+
+market:
+  kafka:
+    topics:
+      tick: market.tick
+      candle: market.candle
+      indicator: indicator.updated
+      pattern: pattern.detected
+
+  scheduler:
+    indicator-delay-ms: 60000
+
+logging:
+  level:
+    root: INFO
+    org.springframework.kafka: INFO
+    com.trade.market: DEBUG
