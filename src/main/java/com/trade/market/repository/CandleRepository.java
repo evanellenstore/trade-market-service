@@ -15,13 +15,13 @@ public interface CandleRepository extends JpaRepository<Candle, Long> {
     /**
      * Find candles by symbol and timeframe
      */
-    List<Candle> findBySymbolAndTimeframeOrderByStartTimeDesc(String symbol, String timeframe);
+    List<Candle> findBySymbolAndTimeframeOrderByCandleTimeDesc(String symbol, String timeframe);
     
     /**
      * Find candles within time range
      */
     @Query("SELECT c FROM Candle c WHERE c.symbol = :symbol AND c.timeframe = :timeframe " +
-           "AND c.startTime >= :startTime AND c.startTime <= :endTime ORDER BY c.startTime ASC")
+           "AND c.candleTime >= :startTime AND c.candleTime <= :endTime ORDER BY c.candleTime ASC")
     List<Candle> findCandlesInTimeRange(@Param("symbol") String symbol, 
                                        @Param("timeframe") String timeframe,
                                        @Param("startTime") LocalDateTime startTime,
@@ -30,7 +30,7 @@ public interface CandleRepository extends JpaRepository<Candle, Long> {
     /**
      * Find latest N candles for a symbol
      */
-    List<Candle> findTop500BySymbolAndTimeframeOrderByStartTimeDesc(String symbol, String timeframe);
+    List<Candle> findTop500BySymbolAndTimeframeOrderByCandleTimeDesc(String symbol, String timeframe);
 
     /**
      * Find distinct symbols present in candles table.

@@ -44,7 +44,7 @@ public class CandleAggregatorServiceImpl implements CandleAggregatorService {
     
     @Override
     public List<Candle> getAggregatedCandles(String symbol, String timeframe, int limit) {
-        return candleRepository.findBySymbolAndTimeframeOrderByStartTimeDesc(symbol, timeframe)
+        return candleRepository.findBySymbolAndTimeframeOrderByCandleTimeDesc(symbol, timeframe)
                 .stream()
                 .limit(limit)
                 .toList();
@@ -128,9 +128,10 @@ public class CandleAggregatorServiceImpl implements CandleAggregatorService {
 
         return Candle.builder()
                 .symbol(symbol)
-                .exchange(candles.get(0).getExchange())
+                .symbolToken(lastCandle.getSymbolToken())
+                .exchange(lastCandle.getExchange())
                 .timeframe(timeframe)
-                .startTime(startTime)
+                .candleTime(startTime)
                 .endTime(endTime)
                 .open(candles.get(0).getOpen())
                 .high(candles.stream().mapToDouble(Candle::getHigh).max().orElse(0.0))

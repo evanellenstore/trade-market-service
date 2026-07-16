@@ -1,5 +1,4 @@
 package com.trade.market.service;
-
 import com.trade.market.dto.CandleDto;
 import com.trade.market.dto.IndicatorResultDto;
 import com.trade.market.entity.Candle;
@@ -7,7 +6,7 @@ import com.trade.market.repository.CandleRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -22,7 +21,7 @@ public class CandleService {
     public List<CandleDto> getCandles(String symbol, String timeframe, int limit) {
         log.debug("Fetching {} candles for {} with timeframe {}", limit, symbol, timeframe);
         
-        List<Candle> candles = candleRepository.findBySymbolAndTimeframeOrderByStartTimeDesc(symbol, timeframe);
+        List<Candle> candles = candleRepository.findBySymbolAndTimeframeOrderByCandleTimeDesc(symbol, timeframe);
         
         return candles.stream()
                 .limit(limit)
@@ -33,7 +32,7 @@ public class CandleService {
     public IndicatorResultDto getIndicators(String symbol, String timeframe) {
         log.debug("Calculating indicators for {} with timeframe {}", symbol, timeframe);
         
-        List<Candle> candles = candleRepository.findTop500BySymbolAndTimeframeOrderByStartTimeDesc(symbol, timeframe);
+        List<Candle> candles = candleRepository.findTop500BySymbolAndTimeframeOrderByCandleTimeDesc(symbol, timeframe);
         
         if (candles.isEmpty()) {
             return IndicatorResultDto.builder()
@@ -43,10 +42,14 @@ public class CandleService {
         }
         
         List<Double> closePrices = candles.stream()
-                .map(Candle::getClose)
-                .collect(Collectors.toList());
-        
-        return indicatorService.calculateIndicators(symbol, timeframe, closePrices);
+            .map(Candle::getClose)
+            .collect(Collectors.toList());
+
+        Candle latest = candles.get(0);
+        String symbolToken = latest.getSymbolToken();
+        LocalDateTime candleTime = latest.getCandleTime();
+
+        return indicatorService.calculateIndicators(symbol, timeframe, symbolToken, candleTime, closePrices);
     }
     
     private CandleDto convertToDto(Candle candle) {

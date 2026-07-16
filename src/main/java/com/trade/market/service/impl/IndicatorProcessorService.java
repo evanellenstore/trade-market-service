@@ -8,6 +8,7 @@ import com.trade.market.pattern.PatternResult;
 import com.trade.market.repository.CandleRepository;
 import com.trade.market.service.IndicatorPersistenceService;
 import com.trade.market.service.IndicatorService;
+import com.trade.market.service.PatternPersistenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -27,6 +28,7 @@ public class IndicatorProcessorService {
     private final PatternEngine patternEngine;
     private final KafkaProducerService kafkaProducerService;
     private final IndicatorPersistenceService indicatorPersistenceService;
+    private final PatternPersistenceService patternPersistenceService;
     private final BarSeriesManager barSeriesManager;
 
     @Scheduled(fixedDelayString = "${market.scheduler.indicator-delay-ms:60000}")
@@ -35,7 +37,7 @@ public class IndicatorProcessorService {
         for (String symbol : symbols) {
             try {
                 List<com.trade.market.entity.Candle> candles = candleRepository
-                        .findTop500BySymbolAndTimeframeOrderByStartTimeDesc(symbol, "ONE_MINUTE");
+                        .findTop500BySymbolAndTimeframeOrderByCandleTimeDesc(symbol, "ONE_MINUTE");
                 if (candles.isEmpty()) {
                     continue;
                 }
@@ -50,7 +52,7 @@ public class IndicatorProcessorService {
                     }
                 }
 
-                IndicatorResultDto result = indicatorService.calculateIndicators(symbol, "ONE_MINUTE", closes);
+                IndicatorResultDto result = indicatorService.calculateIndicators(symbol, "ONE_MINUTE", candles.get(0).getSymbolToken(), candles.get(0).getCandleTime(), closes);
                 indicatorPersistenceService.save(result);
                 kafkaProducerService.publishIndicator(symbol, result);
 
@@ -71,6 +73,11 @@ public class IndicatorProcessorService {
                         .collect(Collectors.toList());
                 
                 PatternResult patternResult = patternEngine.detectPattern(symbol, domainCandles);
+
+
+                patternPersistenceService.save(symbol, candles.get(0).getSymbolToken(), "ONE_MINUTE",
+                        candles.get(0).getCandleTime(), patternResult);
+
                 if (patternResult.isPatternDetected()) {
                     kafkaProducerService.publishPattern(symbol, patternResult.getPattern().name());
                 }

@@ -1,12 +1,13 @@
 package com.trade.market.repository;
 
-import com.trade.market.entity.Indicator;
+import java.util.Optional;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import java.util.Optional;
+import com.trade.market.entity.MarketIndicator;
 
 @Repository
-public interface IndicatorRepository extends JpaRepository<Indicator, Long> {
-    Optional<Indicator> findTopBySymbolAndTimeframeOrderByCreatedAtDesc(String symbol, String timeframe);
+public interface IndicatorRepository extends JpaRepository<MarketIndicator, Long> {
+    Optional<MarketIndicator> findTopBySymbolAndTimeframeOrderByCreatedAtDesc(String symbol, String timeframe);
 }

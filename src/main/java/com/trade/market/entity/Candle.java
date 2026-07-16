@@ -5,9 +5,8 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "candles", indexes = {
-    @Index(name = "idx_symbol_timeframe", columnList = "symbol, timeframe"),
-    @Index(name = "idx_start_time", columnList = "start_time")
+@Table(name = "market_candles", indexes = {
+    @Index(name = "idx_market_candles_symbol_token_timeframe_candle_time", columnList = "symbolToken, timeframe, candle_time")
 })
 @Getter
 @Setter
@@ -20,11 +19,12 @@ public class Candle {
     private Long id;
     
     private String symbol;
+    private String symbolToken;
     private String exchange;
     private String timeframe;
-    private LocalDateTime startTime;
+    @Column(name = "candle_time")
+    private LocalDateTime candleTime;
     private LocalDateTime endTime;
-    
     private double open;
     private double high;
     private double low;
@@ -38,5 +38,13 @@ public class Candle {
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+    }
+
+    public LocalDateTime getStartTime() {
+        return candleTime;
+    }
+
+    public void setStartTime(LocalDateTime startTime) {
+        this.candleTime = startTime;
     }
 }

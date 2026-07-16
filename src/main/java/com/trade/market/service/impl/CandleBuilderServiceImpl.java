@@ -69,9 +69,10 @@ public class CandleBuilderServiceImpl implements CandleBuilderService {
 
         return Candle.builder()
                 .symbol(tick.getSymbol())
+                .symbolToken(tick.getToken())
                 .exchange(tick.getExchange())
                 .timeframe("ONE_MINUTE")
-                .startTime(startTime)
+                .candleTime(startTime)
                 .endTime(startTime.plusMinutes(1))
                 .open(tick.getOpen())
                 .high(tick.getHigh())
