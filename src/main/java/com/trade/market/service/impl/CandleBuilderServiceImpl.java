@@ -31,7 +31,7 @@ public class CandleBuilderServiceImpl implements CandleBuilderService {
 
     @Override
     public void processTick(TickDto tick) {
-        if (tick == null || tick.getTimestamp() == null) {
+        if (tick == null ) {
             return;
         }
 
@@ -45,13 +45,14 @@ public class CandleBuilderServiceImpl implements CandleBuilderService {
             current = createNewCandle(tick);
             activeCandles.put(symbol, current);
         } else {
-            current.setHigh(Math.max(current.getHigh(), tick.getPrice()));
-            current.setLow(Math.min(current.getLow(), tick.getPrice()));
-            current.setClose(tick.getPrice());
+            current.setHigh(Math.max(current.getHigh(), tick.getHigh()));
+            current.setLow(Math.min(current.getLow(), tick.getLow()));
+            current.setClose(tick.getClose());
             current.setVolume(current.getVolume() + tick.getVolume());
+            current.setLtp(tick.getLtp());
         }
 
-        marketCache.updateLatestPrice(symbol, tick.getPrice());
+        marketCache.updateLatestPrice(symbol, tick.getLtp());
         marketCache.updateCurrentCandle(symbol, "ONE_MINUTE", current);
     }
 
@@ -72,11 +73,12 @@ public class CandleBuilderServiceImpl implements CandleBuilderService {
                 .timeframe("ONE_MINUTE")
                 .startTime(startTime)
                 .endTime(startTime.plusMinutes(1))
-                .open(tick.getPrice())
-                .high(tick.getPrice())
-                .low(tick.getPrice())
-                .close(tick.getPrice())
+                .open(tick.getOpen())
+                .high(tick.getHigh())
+                .low(tick.getLow())
+                .close(tick.getClose())
                 .volume(tick.getVolume())
+                .ltp(tick.getLtp())
                 .build();
     }
 

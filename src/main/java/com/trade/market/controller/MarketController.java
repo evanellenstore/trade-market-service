@@ -9,7 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/market")
+@RequestMapping("/market")
 @Slf4j
 @RequiredArgsConstructor
 public class MarketController {
@@ -43,8 +43,5 @@ public class MarketController {
         return ResponseEntity.ok(ApiResponse.success(indicators, "Indicators retrieved"));
     }
     
-    @GetMapping("/health")
-    public ResponseEntity<ApiResponse<Object>> health() {
-        return ResponseEntity.ok(ApiResponse.success("UP", "Service is running"));
-    }
+  
 }

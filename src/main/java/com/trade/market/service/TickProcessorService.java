@@ -17,12 +17,14 @@ public class TickProcessorService {
      * Validate and process incoming tick
      */
     public void processTick(TickDto tick) {
+        
+        // Validate tick
         if (tick == null || !isValidTick(tick)) {
             log.warn("Invalid tick received: {}", tick);
             return;
         }
         
-        log.debug("Processing valid tick: {} @ {}", tick.getSymbol(), tick.getPrice());
+        log.debug("Processing valid tick: {} @ {}", tick.getSymbol(), tick.getLtp());
         
         // Update market cache with latest tick
         marketCacheService.updateTick(tick);
@@ -32,8 +34,6 @@ public class TickProcessorService {
     }
     
     private boolean isValidTick(TickDto tick) {
-        return tick.getSymbol() != null && !tick.getSymbol().isEmpty() &&
-               tick.getPrice() > 0 &&
-               tick.getTimestamp() != null;
+        return tick.getSymbol() != null && !tick.getSymbol().isEmpty();
     }
 }

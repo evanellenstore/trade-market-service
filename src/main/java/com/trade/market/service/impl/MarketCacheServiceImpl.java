@@ -16,7 +16,7 @@ public class MarketCacheServiceImpl implements MarketCacheService {
     
     @Override
     public void updateTick(TickDto tick) {
-        marketCache.updateLatestPrice(tick.getSymbol(), tick.getPrice());
+        marketCache.updateLatestPrice(tick.getSymbol(), tick.getLtp());
     }
     
     @Override

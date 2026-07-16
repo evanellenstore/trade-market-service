@@ -31,4 +31,10 @@ public interface CandleRepository extends JpaRepository<Candle, Long> {
      * Find latest N candles for a symbol
      */
     List<Candle> findTop500BySymbolAndTimeframeOrderByStartTimeDesc(String symbol, String timeframe);
+
+    /**
+     * Find distinct symbols present in candles table.
+     */
+    @Query("SELECT DISTINCT c.symbol FROM Candle c")
+    List<String> findDistinctSymbols();
 }

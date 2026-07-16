@@ -1,190 +1,127 @@
 package com.trade.market.service;
 
-import com.trade.market.dto.IndicatorResultDto;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-
-import java.util.ArrayList;
 import java.util.List;
+
+import org.springframework.stereotype.Service;
+import org.ta4j.core.BarSeries;
+import org.ta4j.core.indicators.EMAIndicator;
+import org.ta4j.core.indicators.MACDIndicator;
+import org.ta4j.core.indicators.RSIIndicator;
+import org.ta4j.core.indicators.bollinger.BollingerBandsLowerIndicator;
+import org.ta4j.core.indicators.bollinger.BollingerBandsMiddleIndicator;
+import org.ta4j.core.indicators.bollinger.BollingerBandsUpperIndicator;
+import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
+import org.ta4j.core.indicators.helpers.DifferenceIndicator;
+import org.ta4j.core.indicators.statistics.StandardDeviationIndicator;
+import org.ta4j.core.indicators.volume.VWAPIndicator;
+import org.ta4j.core.num.DecimalNum;
+import org.ta4j.core.num.Num;
+
+import com.trade.market.dto.IndicatorResultDto;
+import com.trade.market.indicator.BarSeriesManager;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class IndicatorService {
+
+    private final BarSeriesManager barSeriesManager;
 
     public IndicatorResultDto calculateIndicators(String symbol, String timeframe, List<Double> closePrices) {
         if (closePrices == null || closePrices.isEmpty()) {
             return IndicatorResultDto.builder().symbol(symbol).timeframe(timeframe).build();
         }
 
-        double ema20 = calculateEMA(closePrices, 20);
-        double ema50 = calculateEMA(closePrices, 50);
-        double ema200 = calculateEMA(closePrices, 200);
-        double rsi14 = calculateRSI(closePrices, 14);
-        double macd = calculateMacd(closePrices);
-        double signal = calculateSignal(closePrices);
-        double histogram = macd - signal;
-        double atr = calculateAtr(closePrices);
-        double adx = calculateAdx(closePrices);
-        double vwap = calculateVwap(closePrices);
-        double supertrend = calculateSupertrend(closePrices);
-        double bbUpper = calculateBollingerUpper(closePrices);
-        double bbMiddle = calculateBollingerMiddle(closePrices);
-        double bbLower = calculateBollingerLower(closePrices);
-        double pivot = calculatePivot(closePrices);
-        double support1 = pivot - (highLowRange(closePrices) / 2.0);
-        double support2 = pivot - (highLowRange(closePrices) * 1.0);
-        double resistance1 = pivot + (highLowRange(closePrices) / 2.0);
-        double resistance2 = pivot + (highLowRange(closePrices) * 1.0);
+        BarSeries series = barSeriesManager.getSeries(symbol, timeframe);
+        if (series == null || series.getBarCount() == 0) {
+            // Fallback to simple calculation using last values when no TA4J series available
+            double last = closePrices.get(closePrices.size() - 1);
+            return IndicatorResultDto.builder()
+                    .symbol(symbol)
+                    .timeframe(timeframe)
+                    .ema20(last)
+                    .ema50(last)
+                    .ema200(last)   
+                    //.rsi14(last)
+                    //.macd(0.0)
+                    //.signal(0.0)
+                    //.histogram(0.0)
+                   // .atr(0.0)
+                   // .adx(0.0)
+                   // .vwap(last)
+                   // .supertrend(last)
+                   // .bbUpper(last)
+                   // .bbMiddle(last)
+                   // .bbLower(last)
+                   // .pivot(last)
+                   // .support1(last)
+                   // .support2(last)
+                   // .resistance1(last)
+                   // .resistance2(last)
+                    .build();
+        }
+
+        ClosePriceIndicator close = new ClosePriceIndicator(series);
+
+        EMAIndicator ema20 = new EMAIndicator(close, 20);
+        EMAIndicator ema50 = new EMAIndicator(close, 50);
+        EMAIndicator ema200 = new EMAIndicator(close, 200);
+       // RSIIndicator rsi14 = new RSIIndicator(close, 14);
+
+        //MACDIndicator macd = new MACDIndicator(close, 12, 26);
+        //EMAIndicator macdSignal = new EMAIndicator(macd, 9);
+        //DifferenceIndicator macdHist = new DifferenceIndicator(macd, macdSignal);
+
+        //StandardDeviationIndicator sd20 = new StandardDeviationIndicator(close, 20);
+
+       // BollingerBandsMiddleIndicator bbMid = new BollingerBandsMiddleIndicator(close);
+       // BollingerBandsUpperIndicator bbUpper = new BollingerBandsUpperIndicator(bbMid, sd20, DecimalNum.valueOf(2));
+       // BollingerBandsLowerIndicator bbLower = new BollingerBandsLowerIndicator(bbMid, sd20, DecimalNum.valueOf(2));
+
+        //VWAPIndicator vwap = new VWAPIndicator(series, 14);
+
+        int idx = series.getEndIndex();
+        Num latestEma20 = ema20.getValue(idx);
+        Num latestEma50 = ema50.getValue(idx);
+        Num latestEma200 = ema200.getValue(idx);
+       // Num latestRsi14 = rsi14.getValue(idx);
+       // Num latestMacd = macd.getValue(idx);
+       // Num latestSignal = macdSignal.getValue(idx);
+       // Num latestHist = macdHist.getValue(idx);
+       // Num latestVwap = vwap.getValue(idx);
+       // Num latestBbUpper = bbUpper.getValue(idx);
+       // Num latestBbMid = bbMid.getValue(idx);
+       // Num latestBbLower = bbLower.getValue(idx);
+
+        double pivot = closePrices.get(closePrices.size() - 1);
+        double highLowRange = closePrices.stream().mapToDouble(Double::doubleValue).max().orElse(pivot) -
+                closePrices.stream().mapToDouble(Double::doubleValue).min().orElse(pivot);
 
         return IndicatorResultDto.builder()
                 .symbol(symbol)
                 .timeframe(timeframe)
-                .ema20(ema20)
-                .ema50(ema50)
-                .ema200(ema200)
-                .rsi14(rsi14)
-                .macd(macd)
-                .signal(signal)
-                .histogram(histogram)
-                .atr(atr)
-                .adx(adx)
-                .vwap(vwap)
-                .supertrend(supertrend)
-                .bbUpper(bbUpper)
-                .bbMiddle(bbMiddle)
-                .bbLower(bbLower)
-                .pivot(pivot)
-                .support1(support1)
-                .support2(support2)
-                .resistance1(resistance1)
-                .resistance2(resistance2)
+                .ema20(latestEma20.doubleValue())
+                .ema50(latestEma50.doubleValue())
+                .ema200(latestEma200.doubleValue())
+               // .rsi14(latestRsi14.doubleValue())
+               // .macd(latestMacd.doubleValue())
+               // .signal(latestSignal.doubleValue())
+               // .histogram(latestHist.doubleValue())
+               // .atr(0.0) // keep existing ATR calculation if needed
+               // .adx(0.0)
+               // .vwap(latestVwap.doubleValue())
+               // .supertrend(close.getValue(idx).doubleValue())
+               // .bbUpper(latestBbUpper.doubleValue())
+               // .bbMiddle(latestBbMid.doubleValue())
+               // .bbLower(latestBbLower.doubleValue())
+               // .pivot(pivot)
+               // .support1(pivot - (highLowRange / 2.0))
+               // .support2(pivot - highLowRange)
+               // .resistance1(pivot + (highLowRange / 2.0))
+               // .resistance2(pivot + highLowRange)
                 .build();
-    }
-
-    private double calculateEMA(List<Double> prices, int period) {
-        if (prices.isEmpty()) {
-            return 0.0;
-        }
-        if (prices.size() < period) {
-            return prices.get(prices.size() - 1);
-        }
-
-        double multiplier = 2.0 / (period + 1);
-        double ema = prices.subList(0, period).stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
-
-        for (int i = period; i < prices.size(); i++) {
-            ema = (prices.get(i) - ema) * multiplier + ema;
-        }
-        return ema;
-    }
-
-    private double calculateRSI(List<Double> prices, int period) {
-        if (prices.size() < period + 1) {
-            return 50.0;
-        }
-
-        double gain = 0.0;
-        double loss = 0.0;
-        for (int i = 1; i <= period; i++) {
-            double diff = prices.get(i) - prices.get(i - 1);
-            if (diff > 0) {
-                gain += diff;
-            } else {
-                loss += Math.abs(diff);
-            }
-        }
-
-        double avgGain = gain / period;
-        double avgLoss = loss / period;
-        if (avgLoss == 0) {
-            return 100.0;
-        }
-
-        double rs = avgGain / avgLoss;
-        return 100.0 - (100.0 / (1.0 + rs));
-    }
-
-    private double calculateMacd(List<Double> prices) {
-        double ema12 = calculateEMA(prices, 12);
-        double ema26 = calculateEMA(prices, 26);
-        return ema12 - ema26;
-    }
-
-    private double calculateSignal(List<Double> prices) {
-        return calculateEMA(new ArrayList<>(prices.subList(Math.max(prices.size() - 9, 0), prices.size())), 9);
-    }
-
-    private double calculateAtr(List<Double> prices) {
-        if (prices.size() < 2) {
-            return 0.0;
-        }
-        double sum = 0.0;
-        for (int i = 1; i < prices.size(); i++) {
-            sum += Math.abs(prices.get(i) - prices.get(i - 1));
-        }
-        return sum / Math.max(1, prices.size() - 1);
-    }
-
-    private double calculateAdx(List<Double> prices) {
-        if (prices.size() < 2) {
-            return 0.0;
-        }
-        return calculateRSI(prices, 14) / 2.0;
-    }
-
-    private double calculateVwap(List<Double> prices) {
-        if (prices.isEmpty()) {
-            return 0.0;
-        }
-        return prices.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
-    }
-
-    private double calculateSupertrend(List<Double> prices) {
-        if (prices.isEmpty()) {
-            return 0.0;
-        }
-        return prices.get(prices.size() - 1);
-    }
-
-    private double calculateBollingerUpper(List<Double> prices) {
-        double mid = calculateBollingerMiddle(prices);
-        return mid + (calculateStdDev(prices) * 2.0);
-    }
-
-    private double calculateBollingerMiddle(List<Double> prices) {
-        if (prices.isEmpty()) {
-            return 0.0;
-        }
-        return prices.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
-    }
-
-    private double calculateBollingerLower(List<Double> prices) {
-        double mid = calculateBollingerMiddle(prices);
-        return mid - (calculateStdDev(prices) * 2.0);
-    }
-
-    private double calculatePivot(List<Double> prices) {
-        if (prices.isEmpty()) {
-            return 0.0;
-        }
-        return prices.get(prices.size() - 1);
-    }
-
-    private double highLowRange(List<Double> prices) {
-        if (prices.isEmpty()) {
-            return 0.0;
-        }
-        double min = prices.stream().mapToDouble(Double::doubleValue).min().orElse(0.0);
-        double max = prices.stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
-        return max - min;
-    }
-
-    private double calculateStdDev(List<Double> prices) {
-        if (prices.isEmpty()) {
-            return 0.0;
-        }
-        double mean = prices.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
-        double variance = prices.stream().mapToDouble(price -> Math.pow(price - mean, 2)).average().orElse(0.0);
-        return Math.sqrt(variance);
     }
 }

@@ -30,6 +30,7 @@ public class Candle {
     private double low;
     private double close;
     private double volume;
+    private double ltp;
     
     @Column(name = "created_at", columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private LocalDateTime createdAt;

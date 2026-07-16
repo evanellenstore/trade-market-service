@@ -1,14 +1,17 @@
 package com.trade.market.service.impl;
 
+import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.List;
+
+import org.springframework.stereotype.Service;
+
 import com.trade.market.entity.Candle;
 import com.trade.market.repository.CandleRepository;
 import com.trade.market.service.CandleAggregatorService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-
-import java.time.LocalDateTime;
-import java.util.List;
 
 @Service
 @Slf4j
@@ -118,7 +121,11 @@ public class CandleAggregatorServiceImpl implements CandleAggregatorService {
     }
     
     private Candle buildAggregatedCandle(String symbol, List<Candle> candles, String timeframe,
-                                        LocalDateTime startTime, LocalDateTime endTime) {
+            LocalDateTime startTime, LocalDateTime endTime) {
+        candles.sort(Comparator.comparing(Candle::getStartTime));
+
+        Candle lastCandle = candles.get(candles.size() - 1);
+
         return Candle.builder()
                 .symbol(symbol)
                 .exchange(candles.get(0).getExchange())
@@ -128,8 +135,9 @@ public class CandleAggregatorServiceImpl implements CandleAggregatorService {
                 .open(candles.get(0).getOpen())
                 .high(candles.stream().mapToDouble(Candle::getHigh).max().orElse(0.0))
                 .low(candles.stream().mapToDouble(Candle::getLow).min().orElse(0.0))
-                .close(candles.get(candles.size() - 1).getClose())
-                .volume(candles.stream().mapToDouble(Candle::getVolume).sum())
+                .close(lastCandle.getClose())
+                .ltp(lastCandle.getLtp()) // <-- latest traded price
+                .volume(lastCandle.getVolume()) // <-- total volume of the last candle in the aggregation
                 .build();
     }
     

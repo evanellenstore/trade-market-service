@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "market_indicators", indexes = {
-        @Index(name = "idx_indicator_symbol_timeframe", columnList = "symbol, timeframe")
+        @Index(name = "idx_indicator_symbolToken_timeframe", columnList = "symbolToken, timeframe")
 })
 @Getter
 @Setter
@@ -21,6 +21,7 @@ public class Indicator {
     private Long id;
 
     private String symbol;
+    private String symbolToken;
     private String timeframe;
 
     private double ema20;
@@ -28,7 +29,8 @@ public class Indicator {
     private double ema200;
     private double rsi14;
     private double macd;
-    private double signal;
+    
+    private double indSignal;
     private double histogram;
     private double atr;
     private double adx;

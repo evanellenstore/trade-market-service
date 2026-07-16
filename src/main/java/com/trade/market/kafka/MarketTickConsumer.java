@@ -1,5 +1,4 @@
 package com.trade.market.kafka;
-
 import com.trade.market.dto.TickDto;
 import com.trade.market.service.TickProcessorService;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +16,11 @@ public class MarketTickConsumer {
     @KafkaListener(topics = "market.tick", groupId = "${spring.kafka.consumer.group-id}")
     public void consume(TickDto tick) {
         try {
-            log.debug("Received tick: {} price: {}", tick.getSymbol(), tick.getPrice());
+            if (tick == null) {
+                log.warn("Received null tick");
+                return;
+            }
+            log.debug("Received tick: {} price: {}", tick.getSymbol(), tick.getLtp());
             tickProcessorService.processTick(tick);
         } catch (Exception e) {
             log.error("Error processing tick: {}", tick, e);

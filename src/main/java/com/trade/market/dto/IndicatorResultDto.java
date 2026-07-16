@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class IndicatorResultDto {
     private String symbol;
+    private String symbolToken;
     private String timeframe;
     private double ema20;
     private double ema50;
@@ -29,6 +30,6 @@ public class IndicatorResultDto {
     private double pivot;
     private double support1;
     private double support2;
-    private double resistance1;
+   private double resistance1;
     private double resistance2;
 }
