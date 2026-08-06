@@ -38,8 +38,11 @@ public class CandleBuilderServiceImpl implements CandleBuilderService {
         String symbol = tick.getSymbol();
         Candle current = activeCandles.get(symbol);
 
+        // Check if we need to finalize the current candle and start a new one
+
         if (current == null || isNewMinute(current, tick)) {
             if (current != null) {
+                // Finalize the current candle and save it to the database
                 finalizeCandle(current);
             }
             current = createNewCandle(tick);
@@ -55,6 +58,13 @@ public class CandleBuilderServiceImpl implements CandleBuilderService {
         marketCache.updateLatestPrice(symbol, tick.getLtp());
         marketCache.updateCurrentCandle(symbol, "ONE_MINUTE", current);
     }
+    
+    /**
+     * Check if the incoming tick belongs to a new minute compared to the current candle
+     * @param current
+     * @param tick
+     * @return
+     */
 
     private boolean isNewMinute(Candle current, TickDto tick) {
         LocalDateTime currentTime = tick.getTimestamp();
@@ -63,6 +73,12 @@ public class CandleBuilderServiceImpl implements CandleBuilderService {
                 || currentTime.getHour() != candleStart.getHour()
                 || currentTime.getDayOfYear() != candleStart.getDayOfYear();
     }
+
+    /**
+     * Create a new candle based on the incoming tick
+     * @param tick
+     * @return
+     */
 
     private Candle createNewCandle(TickDto tick) {
         LocalDateTime startTime = tick.getTimestamp().withSecond(0).withNano(0);
@@ -83,13 +99,26 @@ public class CandleBuilderServiceImpl implements CandleBuilderService {
                 .build();
     }
 
+    /**
+     * Finalize the candle, save it to the database, update the market cache, and publish to Kafka
+     * @param candle
+     */
+
     private void finalizeCandle(Candle candle) {
         try {
             Candle saved = candleRepository.save(candle);
             log.debug("Finalized candle: {} at {}", saved.getSymbol(), saved.getStartTime());
+
+            // Update market cache with the finalized candle
             marketCache.updateCurrentCandle(saved.getSymbol(), saved.getTimeframe(), saved);
+           
+           // Update BarSeriesManager with the finalized candle
             barSeriesManager.addCandle(saved.getSymbol(), saved.getTimeframe(), saved);
+            
+            // Aggregate finalized candle for higher timeframes
             candleAggregatorService.aggregateCandles(saved.getSymbol(), saved);
+
+            // Publish finalized candle to Kafka
             kafkaProducerService.publishCandle(saved);
         } catch (Exception e) {
             log.error("Error finalizing candle", e);

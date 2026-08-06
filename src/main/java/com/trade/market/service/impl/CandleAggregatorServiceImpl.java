@@ -1,18 +1,13 @@
 package com.trade.market.service.impl;
-
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
-
 import org.springframework.stereotype.Service;
-
 import com.trade.market.entity.Candle;
 import com.trade.market.repository.CandleRepository;
 import com.trade.market.service.CandleAggregatorService;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -50,13 +45,15 @@ public class CandleAggregatorServiceImpl implements CandleAggregatorService {
                 .toList();
     }
     
+    /**
+     * Aggregate 1-minute candles into 5-minute candles
+     * @param symbol
+     * @param oneMinuteCandle
+     */
     private void aggregateTo5Min(String symbol, Candle oneMinuteCandle) {
         LocalDateTime startTime = roundDownTo5Min(oneMinuteCandle.getStartTime());
         LocalDateTime endTime = startTime.plusMinutes(5);
-        
-        List<Candle> candles = candleRepository.findCandlesInTimeRange(
-                symbol, "ONE_MINUTE", startTime, endTime);
-        
+        List<Candle> candles = candleRepository.findCandlesInTimeRange(symbol, "ONE_MINUTE", startTime, endTime);
         if (candles.size() >= 5) {
             Candle aggregated = buildAggregatedCandle(symbol, candles, "FIVE_MINUTE", startTime, endTime);
             candleRepository.save(aggregated);
@@ -64,13 +61,17 @@ public class CandleAggregatorServiceImpl implements CandleAggregatorService {
         }
     }
     
+
+    /**
+     * Aggregate 1-minute candles into 15-minute candles
+     * @param symbol
+     * @param oneMinuteCandle
+     */
+
     private void aggregateTo15Min(String symbol, Candle oneMinuteCandle) {
         LocalDateTime startTime = roundDownTo15Min(oneMinuteCandle.getStartTime());
         LocalDateTime endTime = startTime.plusMinutes(15);
-        
-        List<Candle> candles = candleRepository.findCandlesInTimeRange(
-                symbol, "ONE_MINUTE", startTime, endTime);
-        
+        List<Candle> candles = candleRepository.findCandlesInTimeRange(symbol, "ONE_MINUTE", startTime, endTime);
         if (candles.size() >= 15) {
             Candle aggregated = buildAggregatedCandle(symbol, candles, "FIFTEEN_MINUTE", startTime, endTime);
             candleRepository.save(aggregated);
@@ -78,13 +79,15 @@ public class CandleAggregatorServiceImpl implements CandleAggregatorService {
         }
     }
     
+    /**
+     * Aggregate 1-minute candles into 30-minute candles
+     * @param symbol
+     * @param oneMinuteCandle
+     */
     private void aggregateTo30Min(String symbol, Candle oneMinuteCandle) {
         LocalDateTime startTime = roundDownTo30Min(oneMinuteCandle.getStartTime());
         LocalDateTime endTime = startTime.plusMinutes(30);
-        
-        List<Candle> candles = candleRepository.findCandlesInTimeRange(
-                symbol, "ONE_MINUTE", startTime, endTime);
-        
+        List<Candle> candles = candleRepository.findCandlesInTimeRange(symbol, "ONE_MINUTE", startTime, endTime);
         if (candles.size() >= 30) {
             Candle aggregated = buildAggregatedCandle(symbol, candles, "THIRTY_MINUTE", startTime, endTime);
             candleRepository.save(aggregated);
@@ -92,13 +95,16 @@ public class CandleAggregatorServiceImpl implements CandleAggregatorService {
         }
     }
     
+    /**
+     * Aggregate 1-minute candles into 1-hour candles
+     * @param symbol
+     * @param oneMinuteCandle
+     */
+
     private void aggregateTo1Hour(String symbol, Candle oneMinuteCandle) {
         LocalDateTime startTime = roundDownToHour(oneMinuteCandle.getStartTime());
         LocalDateTime endTime = startTime.plusHours(1);
-        
-        List<Candle> candles = candleRepository.findCandlesInTimeRange(
-                symbol, "ONE_MINUTE", startTime, endTime);
-        
+        List<Candle> candles = candleRepository.findCandlesInTimeRange(symbol, "ONE_MINUTE", startTime, endTime);
         if (candles.size() >= 60) {
             Candle aggregated = buildAggregatedCandle(symbol, candles, "ONE_HOUR", startTime, endTime);
             candleRepository.save(aggregated);
@@ -106,13 +112,15 @@ public class CandleAggregatorServiceImpl implements CandleAggregatorService {
         }
     }
     
+    /**
+     * Aggregate 1-minute candles into daily candles
+     * @param symbol
+     * @param oneMinuteCandle
+     */
     private void aggregateToDaily(String symbol, Candle oneMinuteCandle) {
         LocalDateTime startTime = roundDownToDay(oneMinuteCandle.getStartTime());
         LocalDateTime endTime = startTime.plusDays(1);
-        
-        List<Candle> candles = candleRepository.findCandlesInTimeRange(
-                symbol, "ONE_MINUTE", startTime, endTime);
-        
+        List<Candle> candles = candleRepository.findCandlesInTimeRange(symbol, "ONE_MINUTE", startTime, endTime);
         if (candles.size() >= 390) { // Approximate trading minutes in a day
             Candle aggregated = buildAggregatedCandle(symbol, candles, "DAILY", startTime, endTime);
             candleRepository.save(aggregated);
@@ -120,10 +128,8 @@ public class CandleAggregatorServiceImpl implements CandleAggregatorService {
         }
     }
     
-    private Candle buildAggregatedCandle(String symbol, List<Candle> candles, String timeframe,
-            LocalDateTime startTime, LocalDateTime endTime) {
+    private Candle buildAggregatedCandle(String symbol, List<Candle> candles, String timeframe, LocalDateTime startTime, LocalDateTime endTime) {
         candles.sort(Comparator.comparing(Candle::getStartTime));
-
         Candle lastCandle = candles.get(candles.size() - 1);
 
         return Candle.builder()
