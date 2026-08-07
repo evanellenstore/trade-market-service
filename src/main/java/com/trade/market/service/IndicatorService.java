@@ -25,6 +25,7 @@ import org.ta4j.core.num.Num;
 
 import com.trade.market.dto.IndicatorResultDto;
 import com.trade.market.indicator.BarSeriesManager;
+import com.trade.market.util.TradeConstant;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,11 +49,12 @@ public class IndicatorService {
 
         BarSeries series = barSeriesManager.getSeries(symbol, timeframe);
         if (series == null || series.getBarCount() == 0) {
-            // Fallback to simple calculation using last values when no TA4J series available
+            // Fallback to simple calculation using last values when no TA4J series
+            // available
             double last = closePrices.get(closePrices.size() - 1);
             double pivot = last;
-            double highLowRange = closePrices.stream().mapToDouble(Double::doubleValue).max().orElse(pivot) -
-                    closePrices.stream().mapToDouble(Double::doubleValue).min().orElse(pivot);
+            double highLowRange = closePrices.stream().mapToDouble(Double::doubleValue).max().orElse(pivot)
+                    - closePrices.stream().mapToDouble(Double::doubleValue).min().orElse(pivot);
             double support1 = pivot - (highLowRange / 2.0);
             double support2 = pivot - highLowRange;
             double resistance1 = pivot + (highLowRange / 2.0);
@@ -63,7 +65,7 @@ public class IndicatorService {
                     .symbolToken(symbolToken)
                     .timeframe(timeframe)
                     .candleTime(candleTime)
-                    //========= TREND =========
+                    // ========= TREND =========
                     .ema(last)
                     .ema20(last)
                     .ema50(last)
@@ -105,18 +107,59 @@ public class IndicatorService {
 
         ClosePriceIndicator close = new ClosePriceIndicator(series);
 
-        EMAIndicator ema = new EMAIndicator(close, 10);
-        EMAIndicator ema20 = new EMAIndicator(close, 20);
-        EMAIndicator ema50 = new EMAIndicator(close, 50);
-        EMAIndicator ema100 = new EMAIndicator(close, 100);
-        EMAIndicator ema200 = new EMAIndicator(close, 200);
-        RSIIndicator rsi14 = new RSIIndicator(close, 14);
+        //Calculates the average of the last 10 candles, with more weight given to recent candles.
+        EMAIndicator ema = new EMAIndicator(close, TradeConstant.EMA_TEN);
 
-        MACDIndicator macd = new MACDIndicator(close, 12, 26);
-        EMAIndicator macdSignal = new EMAIndicator(macd, 9);
+        //Calculates the average of the last 20 candles, with more weight given to recent candles.
+        EMAIndicator ema20 = new EMAIndicator(close, TradeConstant.EMA_TWENTY);
+       
+        //Calculates the average of the last 50 candles, with more weight given to recent candles.
+        EMAIndicator ema50 = new EMAIndicator(close, TradeConstant.EMA_FIFTY);
+        
+        //Calculates the average of the last 100 candles, with more weight given to recent candles.
+        EMAIndicator ema100 = new EMAIndicator(close, TradeConstant.EMA_HUNDRED);
+        
+        //Calculates the average of the last 200 candles, with more weight given to recent candles.
+        EMAIndicator ema200 = new EMAIndicator(close, TradeConstant.EMA_TWO_HUNDRED);
+       
+        /* RSI (Relative Strength Index) is a momentum indicator that measures the speed and magnitude of recent price movements.
+        
+        It tells whether a stock is:
+        Overbought (price may fall)
+        Oversold (price may rise)
+        Neutral
+
+        0 ---------------------------100
+        Oversold      Neutral      Overbought
+        30            50             70
+        */
+
+        RSIIndicator rsi14 = new RSIIndicator(close, TradeConstant.RSI_PERIOD);
+
+        /*
+        MACD is a trend-following momentum indicator that helps identify:
+        Trend direction
+        Trend strength
+        Momentum changes
+        Buy/Sell signals
+
+                            Positive
+                        ▲
+                        │
+              2.5 ──────┤
+              1.5 ──────┤
+              0.0 ──────┼──────── Zero Line
+             -1.5 ──────┤
+             -2.5 ──────┤
+                        ▼
+                    Negative
+        
+        */
+        MACDIndicator macd = new MACDIndicator(close, TradeConstant.SHORT_BAR_COUNT, TradeConstant.LONG_BAR_COUNT);
+        EMAIndicator macdSignal = new EMAIndicator(macd, TradeConstant.SIGNAL_BAR_COUNT);
         DifferenceIndicator macdHist = new DifferenceIndicator(macd, macdSignal);
 
-        StandardDeviationIndicator sd20 = new StandardDeviationIndicator(close, 20);
+        StandardDeviationIndicator sd20 = new StandardDeviationIndicator(close, TradeConstant.STANDARD_DEVIATION_BAR_COUNT);
 
         BollingerBandsMiddleIndicator bbMid = new BollingerBandsMiddleIndicator(close);
         BollingerBandsUpperIndicator bbUpper = new BollingerBandsUpperIndicator(bbMid, sd20, DecimalNum.valueOf(2));

@@ -1,4 +1,4 @@
-package com.trade.market.service.impl;
+package com.trade.market.job;
 
 import com.trade.market.dto.IndicatorResultDto;
 import com.trade.market.indicator.BarSeriesManager;
@@ -31,6 +31,11 @@ public class IndicatorProcessorService {
     private final PatternPersistenceService patternPersistenceService;
     private final BarSeriesManager barSeriesManager;
 
+    /* 
+     * This method is scheduled to run at a fixed delay (default 60 seconds) to process the latest indicators for all symbols.
+     * It retrieves the latest candles for each symbol, calculates indicators, detects patterns, and publishes results to Kafka.
+     */
+
     @Scheduled(fixedDelayString = "${market.scheduler.indicator-delay-ms:60000}")
     public void processLatestIndicators() {
         List<String> symbols = candleRepository.findDistinctSymbols();
@@ -54,6 +59,8 @@ public class IndicatorProcessorService {
 
                 IndicatorResultDto result = indicatorService.calculateIndicators(symbol, "ONE_MINUTE", candles.get(0).getSymbolToken(), candles.get(0).getCandleTime(), closes);
                 indicatorPersistenceService.save(result);
+                
+                // Publish the indicator result to Kafka
                 kafkaProducerService.publishIndicator(symbol, result);
 
                 // Series exists — try adding only the latest candle (newest)
@@ -72,12 +79,15 @@ public class IndicatorProcessorService {
                                 .build())
                         .collect(Collectors.toList());
                 
+
+                 // Detect patterns using the pattern engine       
                 PatternResult patternResult = patternEngine.detectPattern(symbol, domainCandles);
 
 
                 patternPersistenceService.save(symbol, candles.get(0).getSymbolToken(), "ONE_MINUTE",
                         candles.get(0).getCandleTime(), patternResult);
 
+                 // If a pattern is detected, publish it to Kafka       
                 if (patternResult.isPatternDetected()) {
                     kafkaProducerService.publishPattern(symbol, patternResult.getPattern().name());
                 }

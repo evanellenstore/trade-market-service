@@ -62,9 +62,7 @@ public class PatternEngine {
                     PatternResult result = detector.detectWithResult(candles);
                     
                     if (result != null && result.isPatternDetected() && result.getConfidence() >= MINIMUM_CONFIDENCE) {
-                        log.info("Pattern detected for {}: {} (confidence: {}%, breakout: {})", 
-                            symbol, result.getPattern().getDisplayName(), 
-                            result.getConfidence(), String.format("%.2f", result.getBreakoutPrice()));
+                        log.info("Pattern detected for {}: {} (confidence: {}%, breakout: {})", symbol, result.getPattern().getDisplayName(), result.getConfidence(), String.format("%.2f", result.getBreakoutPrice()));
                         result.setDetectionTime(System.currentTimeMillis());
                         return result;
                     }

@@ -1,3 +1,96 @@
+
+                                    ┌────────────────────┐
+                                    │   Broker Service   │
+                                    └─────────┬──────────┘
+                                              │
+                                              │ market.tick
+                                              ▼
+                              ┌───────────────────────────┐
+                              │       Kafka Cluster       │
+                              │      market.tick Topic    │
+                              └────────────┬──────────────┘
+                                           │
+                                           ▼
+                              ┌───────────────────────────┐
+                              │   MarketTickConsumer      │
+                              └────────────┬──────────────┘
+                                           │
+                                           ▼
+                              ┌───────────────────────────┐
+                              │ TickProcessorService      │
+                              │ • Validate Symbol         │
+                              │ • Update Latest Price     │
+                              └───────┬─────────┬─────────┘
+                                      │         │
+                                      │         │
+                                      ▼         ▼
+                           ┌──────────────┐  ┌────────────────────┐
+                           │ Market Cache │  │ CandleBuilderService│
+                           └──────────────┘  └─────────┬───────────┘
+                                                       │
+               ┌───────────────────────────────────────┼─────────────────────────────────────┐
+               │                                       │                                     │
+               ▼                                       ▼                                     ▼
+      ┌─────────────────┐                 ┌──────────────────────┐              ┌───────────────────┐
+      │ Active Candle   │                 │ CandleRepository     │              │ BarSeriesManager  │
+      │ Memory Map      │                 │ (MySQL)              │              │ TA4J              │
+      └─────────────────┘                 └──────────────────────┘              └───────────────────┘
+                                                       │
+                                                       ▼
+                                     ┌──────────────────────────────┐
+                                     │ CandleAggregatorService      │
+                                     │                              │
+                                     │ 1m → 5m                      │
+                                     │ 1m → 15m                     │
+                                     │ 1m → 30m                     │
+                                     │ 1m → 1H                      │
+                                     │ 1m → Daily                   │
+                                     └──────────────┬───────────────┘
+                                                    │
+                                                    ▼
+                                         ┌───────────────────────┐
+                                         │ KafkaProducerService  │
+                                         └───────┬───────┬───────┘
+                                                 │       │
+                                                 │       │
+                                                 ▼       ▼
+                                  market.candle      indicator.updated
+                                                         │
+                                                         ▼
+                                                pattern.detected
+
+────────────────────────────────────────────────────────────────────────────
+
+                Every 60 Seconds (Spring Scheduler)
+
+                         ┌────────────────────────┐
+                         │ IndicatorProcessor     │
+                         └───────────┬────────────┘
+                                     │
+                  ┌──────────────────┼──────────────────┐
+                  │                  │                  │
+                  ▼                  ▼                  ▼
+         CandleRepository     BarSeriesManager    IndicatorService
+                                                      │
+                                                      │
+                     EMA • RSI • MACD • VWAP • BBands • ATR • ADX
+                                                      │
+                                                      ▼
+                                              Pattern Engine
+                                                      │
+                                                      ▼
+                                           KafkaProducerService
+                                                      │
+                                 indicator.updated / pattern.detected
+
+
+
+
+
+
+
+
+
 # Trade Market Service Flow
 
 ## Purpose
@@ -198,3 +291,7 @@ flowchart LR
 ## Recommendation
 - Replace `candleRepository.findAll()` symbol extraction in `IndicatorProcessorService` with a distinct-symbol query for better performance.
 - Ensure the scheduler and tick consumer do not re-add duplicate bars in conflicting order.
+
+
+
+
