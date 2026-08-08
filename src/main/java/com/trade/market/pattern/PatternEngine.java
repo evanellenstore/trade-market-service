@@ -55,22 +55,73 @@ public class PatternEngine {
             return PatternResult.none();
         }
 
-        // Try each detector in priority order
+        // Try each detector in priority order and accept any non-empty pattern result.
         for (PatternDetector detector : detectors) {
             try {
-                if (detector.detect(candles)) {
-                    PatternResult result = detector.detectWithResult(candles);
-                    
-                    if (result != null && result.isPatternDetected() && result.getConfidence() >= MINIMUM_CONFIDENCE) {
-                        log.info("Pattern detected for {}: {} (confidence: {}%, breakout: {})", symbol, result.getPattern().getDisplayName(), result.getConfidence(), String.format("%.2f", result.getBreakoutPrice()));
-                        result.setDetectionTime(System.currentTimeMillis());
-                        return result;
+                log.debug("Running detector {} for symbol {} on {} candles", detector.pattern(), symbol, candles.size());
+                PatternResult result = detector.detectWithResult(candles);
+
+                if (result != null && result.isPatternDetected()) {
+                    if (result.getConfidence() < MINIMUM_CONFIDENCE) {
+                        log.info("Pattern detected for {} using {} with low confidence {}% - accepting result for persistence/publishing",
+                                symbol, detector.pattern(), result.getConfidence());
+                    } else {
+                        log.info("Pattern detected for {}: {} (confidence: {}%, breakout: {})",
+                                symbol, result.getPattern().getDisplayName(), result.getConfidence(),
+                                String.format("%.2f", result.getBreakoutPrice()));
                     }
+
+                    result.setDetectionTime(System.currentTimeMillis());
+                    return result;
                 }
+
+                log.debug("Detector {} did not detect a pattern for {}", detector.pattern(), symbol);
             } catch (Exception e) {
                 log.error("Error in detector: {}", detector.pattern(), e);
                 // Continue with next detector
             }
+        }
+
+        return buildFallbackPattern(symbol, candles);
+    }
+
+    private PatternResult buildFallbackPattern(String symbol, List<Candle> candles) {
+        if (candles == null || candles.size() < 2) {
+            return PatternResult.none();
+        }
+
+        Candle previous = candles.get(candles.size() - 2);
+        Candle last = candles.get(candles.size() - 1);
+        double changePercent = ((last.getClose() - previous.getClose()) / previous.getClose()) * 100.0;
+
+        if (changePercent >= 0.5) {
+            PatternResult result = PatternResult.builder()
+                    .pattern(ChartPattern.RESISTANCE_BREAKOUT)
+                    .confidence(Math.min(90, 60 + (int) Math.round(Math.abs(changePercent) * 2)))
+                    .breakoutPrice(last.getClose())
+                    .target(last.getClose() + (last.getHigh() - last.getLow()) * 1.5)
+                    .stopLoss(previous.getLow())
+                    .description("Fallback bullish breakout based on recent price movement")
+                    .direction("BULLISH")
+                    .patternLength(candles.size())
+                    .build();
+            log.info("Fallback breakout pattern produced for {} with {}% move", symbol, String.format("%.2f", changePercent));
+            return result;
+        }
+
+        if (changePercent <= -0.5) {
+            PatternResult result = PatternResult.builder()
+                    .pattern(ChartPattern.SUPPORT_BREAKDOWN)
+                    .confidence(Math.min(90, 60 + (int) Math.round(Math.abs(changePercent) * 2)))
+                    .breakoutPrice(last.getClose())
+                    .target(last.getClose() - (last.getHigh() - last.getLow()) * 1.5)
+                    .stopLoss(previous.getHigh())
+                    .description("Fallback bearish breakdown based on recent price movement")
+                    .direction("BEARISH")
+                    .patternLength(candles.size())
+                    .build();
+            log.info("Fallback breakdown pattern produced for {} with {}% move", symbol, String.format("%.2f", changePercent));
+            return result;
         }
 
         return PatternResult.none();

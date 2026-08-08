@@ -70,6 +70,9 @@ public class BullFlagDetector implements PatternDetector {
             flagpoleCandles.get(0).getLow(),
             flagpoleCandles.get(flagpoleCandles.size() - 1).getHigh()
         );
+
+
+       
         
         if (flagpoleMove < FLAGPOLE_MIN_UPTREND) {
             return false;
@@ -79,6 +82,8 @@ public class BullFlagDetector implements PatternDetector {
         int flagStart = flagpoleStart + MIN_FLAGPOLE_CANDLES;
         List<Candle> flagCandles = candles.subList(flagStart, candles.size());
         
+
+
         if (flagCandles.size() < MIN_FLAG_CANDLES) {
             return false;
         }
@@ -87,6 +92,9 @@ public class BullFlagDetector implements PatternDetector {
         double flagHigh = getHighest(flagCandles);
         double flagLow = getLowest(flagCandles);
         double retracement = (flagHigh - flagLow) / flagpoleMove;
+
+
+       
         
         if (retracement > MAX_RETRACEMENT) {
             return false;
@@ -94,12 +102,14 @@ public class BullFlagDetector implements PatternDetector {
         
         // Check for breakout
         Candle lastCandle = candles.get(candles.size() - 1);
+       
         if (lastCandle.getClose() <= flagHigh) {
             return false;
         }
         
         // Volume confirmation
         double avgVolume = patternUtils.calculateAverageVolume(candles, 20);
+        
         if (lastCandle.getVolume() < avgVolume * VOLUME_THRESHOLD) {
             return false;
         }

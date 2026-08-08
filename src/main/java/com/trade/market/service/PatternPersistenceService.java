@@ -53,8 +53,11 @@ public class PatternPersistenceService {
         }
 
         try {
-            marketPatternRepository.save(builder.build());
-            log.debug("Persisted market pattern for {} {}", symbol, timeframe);
+            MarketPattern persisted = builder.build();
+            marketPatternRepository.save(persisted);
+            log.info("Persisted market pattern for symbol={} timeframe={} candleTime={} pattern={} detected={}",
+                    symbol, timeframe, candleTime, patternResult != null && patternResult.getPattern() != null ? patternResult.getPattern().name() : "NONE",
+                    patternResult != null && patternResult.isPatternDetected());
         } catch (Exception e) {
             log.error("Failed to persist market pattern for {} {}", symbol, timeframe, e);
         }

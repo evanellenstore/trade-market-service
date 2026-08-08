@@ -15,6 +15,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.ZoneId;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -50,46 +51,74 @@ public class IndicatorProcessorService {
                 // Prepare closes for indicator calculations (ordered newest->oldest by repo query)
                 List<Double> closes = candles.stream().map(com.trade.market.entity.Candle::getClose).collect(Collectors.toList());
 
-                // Ensure TA4J series is initialized oldest->newest before calculating indicators
+                // Ensure the TA4J series is initialized in chronological order before calculating indicators.
+                // If the series already exists, only add the newest candle to keep the sequence current.
+                List<com.trade.market.entity.Candle> orderedCandles = candles.stream()
+                        .sorted(Comparator.comparing(com.trade.market.entity.Candle::getCandleTime))
+                        .collect(Collectors.toList());
+
                 if (barSeriesManager.getSeries(symbol, "ONE_MINUTE") == null) {
-                    for (int i = candles.size() - 1; i >= 0; i--) {
-                        barSeriesManager.addCandle(symbol, "ONE_MINUTE", candles.get(i));
+                    for (com.trade.market.entity.Candle candle : orderedCandles) {
+                        barSeriesManager.addCandle(symbol, "ONE_MINUTE", candle);
                     }
+                } else {
+                    barSeriesManager.addCandle(symbol, "ONE_MINUTE", candles.get(0));
                 }
 
                 IndicatorResultDto result = indicatorService.calculateIndicators(symbol, "ONE_MINUTE", candles.get(0).getSymbolToken(), candles.get(0).getCandleTime(), closes);
                 indicatorPersistenceService.save(result);
-                
-                // Publish the indicator result to Kafka
-                kafkaProducerService.publishIndicator(symbol, result);
 
-                // Series exists — try adding only the latest candle (newest)
-                barSeriesManager.addCandle(symbol, "ONE_MINUTE", candles.get(0));
+                // Publish the indicator result to Kafka without aborting the pattern flow if Kafka is unavailable.
+                try {
+                    kafkaProducerService.publishIndicator(symbol, result);
+                } catch (Exception e) {
+                    log.warn("Unable to publish indicator update for {}", symbol, e);
+                }
 
-                // Convert entity candles to domain candles and detect pattern
-                List<com.trade.market.pattern.Candle> domainCandles = candles.stream()
-                        .map(ec -> com.trade.market.pattern.Candle.builder()
-                                .symbol(symbol)
-                                .open(ec.getOpen())
-                                .high(ec.getHigh())
-                                .low(ec.getLow())
-                                .close(ec.getClose())
-                                .volume((long) ec.getVolume())
-                                .startTime(ec.getStartTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
-                                .build())
+                // Convert entity candles to domain candles and detect pattern.
+                // The pattern engine expects chronological order (oldest -> newest), while the repository query returns newest first.
+                List<com.trade.market.pattern.Candle> domainCandles = orderedCandles.stream()
+                        .map(ec -> {
+                            long startTime = ec.getStartTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+                            return com.trade.market.pattern.Candle.builder()
+                                    .symbol(symbol)
+                                    .open(ec.getOpen())
+                                    .high(ec.getHigh())
+                                    .low(ec.getLow())
+                                    .close(ec.getClose())
+                                    .volume((long) ec.getVolume())
+                                    .startTime(startTime)
+                                    .endTime(startTime + 60_000L)
+                                    .build();
+                        })
                         .collect(Collectors.toList());
-                
 
-                 // Detect patterns using the pattern engine       
-                PatternResult patternResult = patternEngine.detectPattern(symbol, domainCandles);
-
+                PatternResult patternResult = PatternResult.none();
+                if (!domainCandles.isEmpty()) {
+                    try {
+                        patternResult = patternEngine.detectPattern(symbol, domainCandles);
+                        log.info("Pattern processing result for {}: detected={} pattern={} confidence={}",
+                                symbol,
+                                patternResult.isPatternDetected(),
+                                patternResult.getPattern() != null ? patternResult.getPattern().name() : "NONE",
+                                patternResult.getConfidence());
+                    } catch (Exception e) {
+                        log.warn("Unable to detect pattern for {}", symbol, e);
+                    }
+                } else {
+                    log.info("No candles available for pattern detection for {}", symbol);
+                }
 
                 patternPersistenceService.save(symbol, candles.get(0).getSymbolToken(), "ONE_MINUTE",
                         candles.get(0).getCandleTime(), patternResult);
 
-                 // If a pattern is detected, publish it to Kafka       
+                // If a pattern is detected, publish it to Kafka without aborting the rest of the flow.
                 if (patternResult.isPatternDetected()) {
-                    kafkaProducerService.publishPattern(symbol, patternResult.getPattern().name());
+                    try {
+                        kafkaProducerService.publishPattern(symbol, patternResult.getPattern().name());
+                    } catch (Exception e) {
+                        log.warn("Unable to publish pattern update for {}", symbol, e);
+                    }
                 }
             } catch (Exception e) {
                 log.warn("Unable to process indicators for {}", symbol, e);
