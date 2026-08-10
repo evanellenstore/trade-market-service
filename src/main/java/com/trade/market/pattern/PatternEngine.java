@@ -30,7 +30,8 @@ public class PatternEngine {
      * @param detectors list of detected pattern detector implementations
      */
     public PatternEngine(List<PatternDetector> detectors) {
-        this.detectors = detectors != null ? detectors : List.of();
+        // Ensure we have a mutable list to allow sorting and modifications
+        this.detectors = detectors != null ? new java.util.ArrayList<>(detectors) : new java.util.ArrayList<>();
         // Sort by priority (higher first)
         this.detectors.sort((a, b) -> Integer.compare(b.getPriority(), a.getPriority()));
         log.info("PatternEngine initialized with {} detectors", this.detectors.size());

@@ -83,7 +83,7 @@ class IndicatorProcessorServiceBacktestTest {
                 .volume(1100)
                 .build();
 
-        when(indicatorService.calculateIndicatorsBySeriesKey(eq(symbol), eq("ONE_MINUTE"), eq(symbol + "::" + runId), eq("BTC"), eq(second.getCandleTime()), anyList()))
+        when(indicatorService.calculateIndicatorsBySeriesKey(eq(symbol), eq("ONE_MINUTE"), eq(symbol + "::" + runId), eq("BTC"), any(), anyList()))
                 .thenReturn(mock(IndicatorResultDto.class));
         when(patternEngine.detectPattern(anyString(), anyList())).thenReturn(PatternResult.none());
 

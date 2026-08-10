@@ -18,7 +18,7 @@ spring:
       ddl-auto: update
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MySQL8Dialect
+        dialect: org.hibernate.dialect.MySQLDialect
         format_sql: true
 
   kafka:
@@ -69,3 +69,8 @@ logging:
     root: INFO
     org.springframework.kafka: INFO
     com.trade.market: DEBUG
+
+
+broker:
+  service:
+    url: http://localhost:3077/broker

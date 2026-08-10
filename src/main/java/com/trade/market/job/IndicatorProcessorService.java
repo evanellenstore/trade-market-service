@@ -10,6 +10,8 @@ import com.trade.market.kafka.KafkaProducerService;
 import com.trade.market.model.ProcessingMode;
 import com.trade.market.pattern.PatternEngine;
 import com.trade.market.pattern.PatternResult;
+import com.trade.market.repository.CandleRepository;
+import com.trade.market.service.BrokerTokenModeService;
 import com.trade.market.service.IndicatorPersistenceService;
 import com.trade.market.service.IndicatorService;
 import com.trade.market.service.PatternPersistenceService;
@@ -39,19 +41,48 @@ public class IndicatorProcessorService {
     private final PatternPersistenceService patternPersistenceService;
     private final BarSeriesManager barSeriesManager;
     private final BacktestProperties backtestProperties;
+    private final BrokerTokenModeService brokerTokenModeService;
+    private final CandleRepository candleRepository;
 
     @Scheduled(fixedDelayString = "${market.scheduler.indicator-delay-ms:60000}")
     public void processLatestIndicatorsLive() {
-        List<String> symbols = liveMarketDataSource.getSymbols();
-        for (String symbol : symbols) {
-            try {
-                List<Candle> candles = liveMarketDataSource.getCandles(symbol, ONE_MINUTE, DEFAULT_CANDLE_LIMIT);
-                if (candles.isEmpty()) {
-                    continue;
+        boolean isLive;
+        try {
+            isLive = brokerTokenModeService.isLiveMode();
+        } catch (Exception e) {
+            log.warn("Unable to determine broker token mode, defaulting to live processing", e);
+            isLive = true;
+        }
+
+        if (isLive) {
+            List<String> symbols = liveMarketDataSource.getSymbols();
+            for (String symbol : symbols) {
+                try {
+                    List<Candle> candles = liveMarketDataSource.getCandles(symbol, ONE_MINUTE, DEFAULT_CANDLE_LIMIT);
+                    if (candles.isEmpty()) {
+                        continue;
+                    }
+                    processSymbol(symbol, candles, ProcessingMode.live());
+                } catch (Exception e) {
+                    log.warn("Unable to process indicators for {}", symbol, e);
                 }
-                processSymbol(symbol, candles, ProcessingMode.live());
-            } catch (Exception e) {
-                log.warn("Unable to process indicators for {}", symbol, e);
+            }
+        } else {
+            log.info("Broker token mode set to backtest - running scheduled backtest for available symbols");
+            List<String> symbols = candleRepository.findDistinctSymbols();
+            String runId = "scheduled-backtest-" + System.currentTimeMillis();
+            for (String symbol : symbols) {
+                try {
+                    List<Candle> history = candleRepository.findBySymbolAndTimeframeOrderByCandleTimeDesc(symbol, ONE_MINUTE);
+                    if (history == null || history.isEmpty()) {
+                        continue;
+                    }
+                    // repository returns desc order, reverse to oldest-first
+                    java.util.Collections.reverse(history);
+                    runBacktest(symbol, history, runId);
+                } catch (Exception e) {
+                    log.warn("Unable to run scheduled backtest for {}", symbol, e);
+                }
             }
         }
     }
