@@ -52,6 +52,10 @@ public class IndicatorService {
     private final BarSeriesManager barSeriesManager;
 
     public IndicatorResultDto calculateIndicators(String symbol, String timeframe, String symbolToken, LocalDateTime candleTime, List<Double> closePrices) {
+        return calculateIndicatorsBySeriesKey(symbol, timeframe, symbol, symbolToken, candleTime, closePrices);
+    }
+
+    public IndicatorResultDto calculateIndicatorsBySeriesKey(String symbol, String timeframe, String seriesKey, String symbolToken, LocalDateTime candleTime, List<Double> closePrices) {
         if (closePrices == null || closePrices.isEmpty()) {
             return IndicatorResultDto.builder()
                     .symbol(symbol)
@@ -61,7 +65,7 @@ public class IndicatorService {
                     .build();
         }
 
-        BarSeries series = barSeriesManager.getSeries(symbol, timeframe);
+        BarSeries series = barSeriesManager.getSeriesByKey(seriesKey, timeframe);
         if (series == null || series.getBarCount() == 0) {
             return fallbackResult(symbol, symbolToken, timeframe, candleTime, closePrices);
         }

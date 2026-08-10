@@ -60,6 +60,10 @@ market:
   scheduler:
     indicator-delay-ms: 60000
 
+  backtest:
+    publish: true
+    persist: true
+
 logging:
   level:
     root: INFO

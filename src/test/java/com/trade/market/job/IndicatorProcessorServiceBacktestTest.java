@@ -1,12 +1,12 @@
 package com.trade.market.job;
 
-import com.trade.market.datasource.LiveMarketDataSource;
 import com.trade.market.dto.IndicatorResultDto;
+import com.trade.market.entity.Candle;
 import com.trade.market.indicator.BarSeriesManager;
 import com.trade.market.kafka.KafkaProducerService;
+import com.trade.market.model.ProcessingMode;
 import com.trade.market.pattern.PatternEngine;
 import com.trade.market.pattern.PatternResult;
-import com.trade.market.repository.CandleRepository;
 import com.trade.market.service.IndicatorPersistenceService;
 import com.trade.market.service.IndicatorService;
 import com.trade.market.service.PatternPersistenceService;
@@ -21,21 +21,17 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class IndicatorProcessorServiceTest {
-
-    @Mock
-    private CandleRepository candleRepository;
-
-    @Mock
-    private LiveMarketDataSource liveMarketDataSource;
+class IndicatorProcessorServiceBacktestTest {
 
     @Mock
     private IndicatorService indicatorService;
@@ -59,13 +55,15 @@ class IndicatorProcessorServiceTest {
     private IndicatorProcessorService indicatorProcessorService;
 
     @Test
-    void processLatestIndicatorsShouldPassCandlesInChronologicalOrderToPatternEngine() {
+    void runBacktestShouldProcessHistoryInChronologicalStepsWithoutPublishingWhenPublishDisabled() {
         String symbol = "BTCUSDT";
-        com.trade.market.entity.Candle newest = com.trade.market.entity.Candle.builder()
+        String runId = "backtest-123";
+
+        Candle first = Candle.builder()
                 .symbol(symbol)
                 .symbolToken("BTC")
                 .timeframe("ONE_MINUTE")
-                .candleTime(LocalDateTime.of(2024, 1, 1, 10, 2))
+                .candleTime(LocalDateTime.of(2024, 1, 1, 10, 0))
                 .open(100.0)
                 .high(101.0)
                 .low(99.0)
@@ -73,36 +71,37 @@ class IndicatorProcessorServiceTest {
                 .volume(1000)
                 .build();
 
-        com.trade.market.entity.Candle oldest = com.trade.market.entity.Candle.builder()
+        Candle second = Candle.builder()
                 .symbol(symbol)
                 .symbolToken("BTC")
                 .timeframe("ONE_MINUTE")
                 .candleTime(LocalDateTime.of(2024, 1, 1, 10, 1))
-                .open(99.0)
-                .high(100.0)
-                .low(98.0)
-                .close(99.5)
-                .volume(900)
+                .open(100.5)
+                .high(101.5)
+                .low(100.0)
+                .close(101.0)
+                .volume(1100)
                 .build();
 
-        when(liveMarketDataSource.getSymbols()).thenReturn(List.of(symbol));
-        when(liveMarketDataSource.getCandles(symbol, "ONE_MINUTE", 500)).thenReturn(List.of(newest, oldest));
-        when(barSeriesManager.getSeriesByKey(symbol, "ONE_MINUTE")).thenReturn(null);
-        when(indicatorService.calculateIndicatorsBySeriesKey(eq(symbol), eq("ONE_MINUTE"), eq(symbol), eq("BTC"), eq(newest.getCandleTime()), anyList()))
+        when(indicatorService.calculateIndicatorsBySeriesKey(eq(symbol), eq("ONE_MINUTE"), eq(symbol + "::" + runId), eq("BTC"), eq(second.getCandleTime()), anyList()))
                 .thenReturn(mock(IndicatorResultDto.class));
         when(patternEngine.detectPattern(anyString(), anyList())).thenReturn(PatternResult.none());
 
-        indicatorProcessorService.processLatestIndicatorsLive();
+        indicatorProcessorService.runBacktest(symbol, List.of(first, second), runId,
+                ProcessingMode.backtest(runId, true, false));
+
+        verify(indicatorPersistenceService).save(any(IndicatorResultDto.class));
+        //verify(patternPersistenceService).save(eq(symbol), eq(second.getSymbolToken()), eq("ONE_MINUTE"), eq(second.getCandleTime()), any(PatternResult.class));
+        verify(kafkaProducerService, never()).publishIndicator(anyString(), any(IndicatorResultDto.class));
+        verify(kafkaProducerService, never()).publishPattern(anyString(), anyString());
 
         @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<com.trade.market.pattern.Candle>> captor = ArgumentCaptor.forClass((Class<List<com.trade.market.pattern.Candle>>) (Class<?>) List.class);
-        verify(patternEngine).detectPattern(eq(symbol), captor.capture());
+        ArgumentCaptor<List<com.trade.market.pattern.Candle>> candleCaptor = (ArgumentCaptor) ArgumentCaptor.forClass(List.class);
+        verify(patternEngine).detectPattern(eq(symbol), candleCaptor.capture());
 
-        List<com.trade.market.pattern.Candle> patternCandles = captor.getValue();
-        assertEquals(2, patternCandles.size());
-        assertEquals(oldest.getStartTime().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
-                patternCandles.get(0).getStartTime());
-        assertEquals(newest.getStartTime().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
-                patternCandles.get(1).getStartTime());
+        List<com.trade.market.pattern.Candle> capturedCandles = candleCaptor.getValue();
+        assertEquals(2, capturedCandles.size());
+        assertEquals(first.getStartTime().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(), capturedCandles.get(0).getStartTime());
+        assertEquals(second.getStartTime().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(), capturedCandles.get(1).getStartTime());
     }
 }

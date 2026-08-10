@@ -14,6 +14,7 @@ public class IndicatorResultDto {
     private String symbol;
     private String symbolToken;
     private String timeframe;
+    private String runId;
     private LocalDateTime candleTime;
     //========= TREND =========
     private double ema;

@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "market_patterns", indexes = {
-        @Index(name = "idx_market_patterns_symbol_token_timeframe_candle_time", columnList = "symbolToken, timeframe, candle_time")
+        @Index(name = "idx_market_patterns_symbol_token_timeframe_runid_candle_time", columnList = "symbolToken, timeframe, runId, candle_time")
 })
 @Getter
 @Setter
@@ -23,6 +23,7 @@ public class MarketPattern {
     private String symbol;
     private String symbolToken;
     private String timeframe;
+    private String runId;
 
     @Column(name = "candle_time")
     private LocalDateTime candleTime;

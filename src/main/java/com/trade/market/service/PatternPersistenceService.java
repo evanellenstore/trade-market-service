@@ -20,12 +20,14 @@ public class PatternPersistenceService {
     public void save(String symbol,
                      String symbolToken,
                      String timeframe,
+                     String runId,
                      LocalDateTime candleTime,
                      PatternResult patternResult) {
         MarketPattern.MarketPatternBuilder builder = MarketPattern.builder()
                 .symbol(symbol)
                 .symbolToken(symbolToken)
                 .timeframe(timeframe)
+                .runId(runId)
                 .candleTime(candleTime);
 
         if (patternResult != null && patternResult.isPatternDetected()) {
