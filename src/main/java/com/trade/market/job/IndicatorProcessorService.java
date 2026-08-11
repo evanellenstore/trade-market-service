@@ -73,7 +73,8 @@ public class IndicatorProcessorService {
             String runId = "scheduled-backtest-" + System.currentTimeMillis();
             for (String symbol : symbols) {
                 try {
-                    List<Candle> history = candleRepository.findBySymbolAndTimeframeOrderByCandleTimeDesc(symbol, ONE_MINUTE);
+                    List<Candle> history = candleRepository.findBySymbolAndTimeframeOrderByCandleTimeDesc(symbol,
+                            ONE_MINUTE);
                     if (history == null || history.isEmpty()) {
                         continue;
                     }
@@ -98,7 +99,8 @@ public class IndicatorProcessorService {
             throw new IllegalArgumentException("runId must match the ProcessingMode runId for backtest");
         }
 
-        BacktestMarketDataSource backtestMarketDataSource = new BacktestMarketDataSource(symbol, ONE_MINUTE, historyOldestFirst);
+        BacktestMarketDataSource backtestMarketDataSource = new BacktestMarketDataSource(symbol, ONE_MINUTE,
+                historyOldestFirst);
         while (backtestMarketDataSource.hasNext()) {
             List<Candle> candles = backtestMarketDataSource.advance(DEFAULT_CANDLE_LIMIT);
             processSymbol(symbol, candles, mode);
@@ -106,7 +108,8 @@ public class IndicatorProcessorService {
     }
 
     public void runBacktest(String symbol, List<Candle> historyOldestFirst, String runId) {
-        ProcessingMode mode = ProcessingMode.backtest(runId, backtestProperties.isPersist(), backtestProperties.isPublish());
+        ProcessingMode mode = ProcessingMode.backtest(runId, backtestProperties.isPersist(),
+                backtestProperties.isPublish());
         runBacktest(symbol, historyOldestFirst, runId, mode);
     }
 
@@ -167,11 +170,13 @@ public class IndicatorProcessorService {
         if (!domainCandles.isEmpty()) {
             try {
                 patternResult = patternEngine.detectPattern(symbol, domainCandles);
-                log.info("Pattern processing result for {}: detected={} pattern={} confidence={}",
+                System.out.printf(
+                        "============= ********** Pattern processing result for %s: detected=%s pattern=%s confidence=%d%n",
                         symbol,
                         patternResult.isPatternDetected(),
                         patternResult.getPattern() != null ? patternResult.getPattern().name() : "NONE",
                         patternResult.getConfidence());
+
             } catch (Exception e) {
                 log.warn("Unable to detect pattern for {}", symbol, e);
             }
@@ -179,17 +184,22 @@ public class IndicatorProcessorService {
             log.info("No candles available for pattern detection for {}", symbol);
         }
 
-        if (mode.isPersist()) {
-            patternPersistenceService.save(symbol, latestCandle.getSymbolToken(), ONE_MINUTE,
-                    mode.getRunId(), latestCandle.getCandleTime(), patternResult);
-        }
+        if (patternResult.isPatternDetected()) {
 
-        if (patternResult.isPatternDetected() && mode.isPublish()) {
-            try {
-                kafkaProducerService.publishPattern(symbol, patternResult.getPattern().name());
-            } catch (Exception e) {
-                log.warn("Unable to publish pattern update for {}", symbol, e);
+            if (mode.isPersist()) {
+                patternPersistenceService.save(symbol, latestCandle.getSymbolToken(), ONE_MINUTE,
+                        mode.getRunId(), latestCandle.getCandleTime(), patternResult);
             }
+
+            if (mode.isPublish()) {
+                try {
+                    kafkaProducerService.publishPattern(symbol, patternResult.getPattern().name());
+                } catch (Exception e) {
+                    log.warn("Unable to publish pattern update for {}", symbol, e);
+                }
+            }
+        } else {
+            System.out.println("============= ********** No pattern detected for " + symbol);
         }
     }
 }
