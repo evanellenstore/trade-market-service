@@ -12,12 +12,15 @@ import java.util.List;
  * Pattern Characteristics:
  * - Horizontal support level (multiple touches at bottom)
  * - Horizontal resistance level (multiple touches at top)
- * - Price consolidates between two levels
+ * - Price consolidates between two levels for at least MIN_PATTERN_CANDLES
  * - Volume decreases during consolidation
- * - Breakout can be in either direction
+ * - Breakout can be in either direction, and must clear the level by more
+ *   than BREAKOUT_THRESHOLD percent to count as a genuine breakout rather
+ *   than noise
  * - Minimum 3 touches on each level
  * 
- * Signal: Neutral until breakout - continuation or reversal
+ * Signal: Neutral until breakout - continuation or reversal. No signal is
+ * produced while price remains inside the support/resistance range.
  * Target: Depends on breakout direction (rectangle height projected)
  * Stop Loss: Opposite side of breakout
  */
@@ -33,7 +36,7 @@ public class RectangleDetector implements PatternDetector {
     private static final double RESISTANCE_TOLERANCE = 0.5;
     private static final double SUPPORT_TOLERANCE = 0.5;
     private static final int MIN_TOUCHES = 3;
-    private static final double VOLUME_THRESHOLD = 0.8;
+    private static final double VOLUME_THRESHOLD_MULTIPLIER = 1.2;
     private static final double BREAKOUT_THRESHOLD = 0.5;
     
     public RectangleDetector(PivotDetector pivotDetector, PatternUtils patternUtils) {
@@ -56,98 +59,73 @@ public class RectangleDetector implements PatternDetector {
         return 45;
     }
     
-    @Override
-    public boolean detect(List<Candle> candles) {
-        if (candles.size() < MIN_PATTERN_CANDLES) {
-            return false;
-        }
-        
-        List<PivotPoint> swingHighs = pivotDetector.detectSwingHighs(candles, 2, 2);
-        List<PivotPoint> swingLows = pivotDetector.detectSwingLows(candles, 2, 2);
-        
-        if (swingHighs.size() < MIN_TOUCHES || swingLows.size() < MIN_TOUCHES) {
-            return false;
-        }
-        
-        // Find flat resistance
-        double resistance = findFlatLevel(swingHighs, RESISTANCE_TOLERANCE);
-        if (resistance <= 0) {
-            return false;
-        }
-        
-        // Find flat support
-        double support = findFlatLevel(swingLows, SUPPORT_TOLERANCE);
-        if (support <= 0) {
-            return false;
-        }
-        
-        // Ensure support < resistance
-        if (support >= resistance) {
-            return false;
-        }
-        
-        // Check rectangle height (should be reasonable, not too small)
-        double height = resistance - support;
-        double heightPercent = patternUtils.percentageDifference(support, resistance);
-        if (heightPercent < 1.0) {
-            return false;
-        }
-        
-        // Check for breakout
-        Candle lastCandle = candles.get(candles.size() - 1);
-        boolean breakoutAbove = lastCandle.getClose() > resistance;
-        boolean breakoutBelow = lastCandle.getClose() < support;
-        
-        if (!breakoutAbove && !breakoutBelow) {
-            return false;
-        }
-        
-        double avgVolume = patternUtils.calculateAverageVolume(candles, 20);
-        if (lastCandle.getVolume() < avgVolume * VOLUME_THRESHOLD) {
-            return false;
-        }
-        
-        log.info("Rectangle detected: Support={}, Resistance={}, Height={}", 
-            String.format("%.2f", support),
-            String.format("%.2f", resistance),
-            String.format("%.2f%%", heightPercent));
-        
-        return true;
-    }
     
     @Override
     public PatternResult detectWithResult(List<Candle> candles) {
-        if (!detect(candles)) {
-            return PatternResult.none();
-        }
-        
         List<PivotPoint> swingHighs = pivotDetector.detectSwingHighs(candles, 2, 2);
         List<PivotPoint> swingLows = pivotDetector.detectSwingLows(candles, 2, 2);
-        
+
+        if (swingHighs.isEmpty() || swingLows.isEmpty()) {
+            log.debug("RectangleDetector skipped: insufficient pivot points");
+            return PatternResult.none();
+        }
+
         double resistance = findFlatLevel(swingHighs, RESISTANCE_TOLERANCE);
         double support = findFlatLevel(swingLows, SUPPORT_TOLERANCE);
+
+        if (resistance == 0 || support == 0) {
+            log.debug("RectangleDetector skipped: no flat support/resistance level found");
+            return PatternResult.none();
+        }
+
+        // Anchor the pattern's start on whichever level's earliest touch came first,
+        // so the reported duration reflects the full consolidation, not just the
+        // shorter of the two series.
+        int patternStartIndex = Math.min(swingLows.get(0).getIndex(), swingHighs.get(0).getIndex());
+        int patternLength = candles.size() - patternStartIndex;
+
+        if (patternLength < MIN_PATTERN_CANDLES) {
+            log.debug("RectangleDetector skipped: consolidation too short ({} candles)", patternLength);
+            return PatternResult.none();
+        }
+
         Candle lastCandle = candles.get(candles.size() - 1);
-        
         double height = resistance - support;
-        double target, stopLoss;
+
+        if (height <= 0) {
+            log.debug("RectangleDetector skipped: invalid range (resistance <= support)");
+            return PatternResult.none();
+        }
+
+        double target;
+        double stopLoss;
         String direction;
-        
-        if (lastCandle.getClose() > resistance) {
-            // Breakout above
+
+        double breakoutAbovePercent = patternUtils.percentageDifference(lastCandle.getClose(), resistance);
+        double breakdownBelowPercent = patternUtils.percentageDifference(support, lastCandle.getClose());
+
+        if (lastCandle.getClose() > resistance && breakoutAbovePercent >= BREAKOUT_THRESHOLD) {
+            // Genuine breakout above resistance
             target = resistance + height;
             stopLoss = support - (height * 0.1);
             direction = "BULLISH";
-        } else {
-            // Breakdown below
+        } else if (lastCandle.getClose() < support && breakdownBelowPercent >= BREAKOUT_THRESHOLD) {
+            // Genuine breakdown below support
             target = support - height;
             stopLoss = resistance + (height * 0.1);
             direction = "BEARISH";
+        } else {
+            // Price is still inside the range, or has only marginally poked past a
+            // level without clearing the noise threshold - no breakout yet.
+            log.debug("RectangleDetector skipped: no confirmed breakout (price within range or below threshold)");
+            return PatternResult.none();
         }
         
         int confidence = calculateConfidence(candles, swingHighs, swingLows, resistance, support, lastCandle);
         
         return PatternResult.builder()
             .pattern(ChartPattern.RECTANGLE)
+            .patternDetected(true)
             .confidence(confidence)
             .breakoutPrice(lastCandle.getClose())
             .stopLoss(stopLoss)
@@ -156,7 +134,7 @@ public class RectangleDetector implements PatternDetector {
             .description("Rectangle: Support=" + String.format("%.2f", support) +
                 ", Resistance=" + String.format("%.2f", resistance) +
                 ", Breakout=" + direction)
-            .patternLength(candles.size() - Math.max(swingLows.get(0).getIndex(), swingHighs.get(0).getIndex()))
+            .patternLength(patternLength)
             .direction(direction)
             .riskRewardRatio(patternUtils.calculateRiskRewardRatio())
             .detectionTime(System.currentTimeMillis())
@@ -212,7 +190,7 @@ public class RectangleDetector implements PatternDetector {
         
         // Volume
         double avgVolume = patternUtils.calculateAverageVolume(candles, 20);
-        if (lastCandle.getVolume() > avgVolume * 1.2) {
+        if (lastCandle.getVolume() > avgVolume * VOLUME_THRESHOLD_MULTIPLIER) {
             confidence += 15;
         }
         

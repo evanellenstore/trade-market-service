@@ -23,108 +23,74 @@ import java.util.List;
 @Component
 @Slf4j
 public class SupportBreakdownDetector implements PatternDetector {
-    
+
     private final PivotDetector pivotDetector;
     private final PatternUtils patternUtils;
-    
+
     // Configuration constants
     private static final int MIN_LOOKBACK = 20;
     private static final double SUPPORT_TOLERANCE = 0.5;
     private static final int MIN_TOUCHES = 3;
-    private static final double VOLUME_THRESHOLD = 0.8;
-    private static final double BREAKDOWN_THRESHOLD = 0.5;
-    
+    private static final double VOLUME_THRESHOLD = 0.8; // min volume multiple above average, as a fraction added on top
+    private static final double BREAKOUT_THRESHOLD = 0.5; // min % close must clear support by, downward
+
     public SupportBreakdownDetector(PivotDetector pivotDetector, PatternUtils patternUtils) {
         this.pivotDetector = pivotDetector;
         this.patternUtils = patternUtils;
     }
-    
+
     @Override
     public ChartPattern pattern() {
         return ChartPattern.SUPPORT_BREAKDOWN;
     }
-    
+
     @Override
     public String description() {
         return "Price breaks below support level after multiple touches with volume confirmation";
     }
-    
+
     @Override
     public int getPriority() {
         return 50;
     }
-    
-    @Override
-    public boolean detect(List<Candle> candles) {
-        if (candles.size() < MIN_LOOKBACK) {
-            return false;
-        }
-        
-        Candle lastCandle = candles.get(candles.size() - 1);
-        
-        // Find recent support level
-        List<PivotPoint> recentLows = pivotDetector.detectSwingLows(
-            candles.subList(Math.max(0, candles.size() - MIN_LOOKBACK), candles.size()), 2, 2
-        );
-        
-        if (recentLows.isEmpty()) {
-            return false;
-        }
-        
-        // Find most significant support (lowest that was tested multiple times)
-        double support = findSupportLevel(candles, recentLows);
-        if (support <= 0 || lastCandle.getClose() >= support) {
-            return false;
-        }
-        
-        // Verify breakdown below support
-        double breakdownPercent = Math.abs(patternUtils.percentageDifference(support, lastCandle.getClose()));
-        if (breakdownPercent < BREAKDOWN_THRESHOLD) {
-            return false;
-        }
-        
-        // Volume confirmation
-        double avgVolume = patternUtils.calculateAverageVolume(candles, 20);
-        if (lastCandle.getVolume() < avgVolume * VOLUME_THRESHOLD) {
-            return false;
-        }
-        
-        // Bearish candle confirmation
-        if (lastCandle.getClose() >= lastCandle.getOpen()) {
-            return false;
-        }
-        
-        log.info("Support Breakdown detected: Support={}, Breakdown={}", 
-            String.format("%.2f", support),
-            String.format("%.2f%%", breakdownPercent));
-        
-        return true;
-    }
-    
+
     @Override
     public PatternResult detectWithResult(List<Candle> candles) {
-        if (!detect(candles)) {
-            return PatternResult.none();
+        if (candles == null || candles.size() < MIN_LOOKBACK) {
+            return null;
         }
-        
-        List<PivotPoint> recentLows = pivotDetector.detectSwingLows(
-            candles.subList(Math.max(0, candles.size() - MIN_LOOKBACK), candles.size()), 2, 2
-        );
-        
+
+        List<Candle> lookbackCandles = candles.subList(
+            Math.max(0, candles.size() - MIN_LOOKBACK), candles.size());
+
+        List<PivotPoint> recentLows = pivotDetector.detectSwingLows(lookbackCandles, 2, 2);
+
         double support = findSupportLevel(candles, recentLows);
-        
-        // Find resistance (highest in last MIN_LOOKBACK)
-        List<Candle> lookbackCandles = candles.subList(Math.max(0, candles.size() - MIN_LOOKBACK), candles.size());
-        double resistance = lookbackCandles.stream().mapToDouble(Candle::getHigh).max().orElse(Double.MAX_VALUE);
-        
+        if (support <= 0) {
+            // No valid, sufficiently-tested support level found — no pattern.
+            return null;
+        }
+
+        double resistance = lookbackCandles.stream().mapToDouble(Candle::getHigh).max().orElse(0);
+        if (resistance <= support) {
+            return null;
+        }
+
         Candle lastCandle = candles.get(candles.size() - 1);
-        
+
+        // Confirm an actual breakdown: close must clear support by at least BREAKOUT_THRESHOLD %, downward.
+        double breakdownPct = patternUtils.percentageDifference(support, lastCandle.getClose());
+        boolean brokeDown = lastCandle.getClose() < support && breakdownPct >= BREAKOUT_THRESHOLD;
+        if (!brokeDown) {
+            return null;
+        }
+
         double projectedDistance = resistance - support;
         double target = support - projectedDistance;
         double stopLoss = support + (projectedDistance * 0.1);
-        
-        int confidence = calculateConfidence(candles, support, resistance, lastCandle);
-        
+
+        int confidence = calculateConfidence(candles, breakdownPct, lastCandle);
+
         return PatternResult.builder()
             .pattern(ChartPattern.SUPPORT_BREAKDOWN)
             .confidence(confidence)
@@ -140,46 +106,45 @@ public class SupportBreakdownDetector implements PatternDetector {
             .detectionTime(System.currentTimeMillis())
             .build();
     }
-    
+
     private double findSupportLevel(List<Candle> candles, List<PivotPoint> pivots) {
         if (pivots.isEmpty()) {
             return 0;
         }
-        
+
         // Find the lowest level that was tested multiple times
-        double bottomLevel = pivots.stream().mapToDouble(PivotPoint::getPrice).min().orElse(Double.MAX_VALUE);
+        double bottomLevel = pivots.stream().mapToDouble(PivotPoint::getPrice).min().orElse(0);
         int touches = 0;
-        
+
         for (PivotPoint pivot : pivots) {
             if (patternUtils.pricesApproximatelyEqual(pivot.getPrice(), bottomLevel, SUPPORT_TOLERANCE)) {
                 touches++;
             }
         }
-        
+
         return touches >= MIN_TOUCHES ? bottomLevel : 0;
     }
-    
-    private int calculateConfidence(List<Candle> candles, double support, double resistance, Candle lastCandle) {
+
+    private int calculateConfidence(List<Candle> candles, double breakdownPct, Candle lastCandle) {
         int confidence = 50;
-        
-        // Breakdown strength
-        double breakdown = Math.abs(patternUtils.percentageDifference(support, lastCandle.getClose()));
-        if (breakdown > 1.5) confidence += 20;
-        else if (breakdown > 0.8) confidence += 15;
-        
+
+        // Breakdown strength (already confirmed positive/below support by caller)
+        if (breakdownPct > 1.5) confidence += 20;
+        else if (breakdownPct > 0.8) confidence += 15;
+
         // Volume
         double avgVolume = patternUtils.calculateAverageVolume(candles, 20);
-        if (lastCandle.getVolume() > avgVolume * 1.3) {
+        if (lastCandle.getVolume() > avgVolume * (1 + VOLUME_THRESHOLD)) {
             confidence += 20;
         } else if (lastCandle.getVolume() > avgVolume) {
             confidence += 15;
         }
-        
+
         // Bearish candle
         if (lastCandle.getBody() > lastCandle.getRange() * 0.7) {
             confidence += 15;
         }
-        
+
         return Math.min(100, confidence);
     }
 }

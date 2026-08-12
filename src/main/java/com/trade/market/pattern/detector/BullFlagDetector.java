@@ -55,90 +55,52 @@ public class BullFlagDetector implements PatternDetector {
         return 65;
     }
     
-    @Override
-    public boolean detect(List<Candle> candles) {
-        if (candles.size() < MIN_FLAGPOLE_CANDLES + MIN_FLAG_CANDLES) {
-            return false;
-        }
-        
-        // Identify potential flagpole (last MIN_FLAGPOLE_CANDLES with strong uptrend)
-        int flagpoleStart = Math.max(0, candles.size() - MIN_FLAGPOLE_CANDLES - MIN_FLAG_CANDLES);
-        List<Candle> flagpoleCandles = candles.subList(flagpoleStart, flagpoleStart + MIN_FLAGPOLE_CANDLES);
-        
-        // Check for strong uptrend in flagpole
-        double flagpoleMove = patternUtils.percentageDifference(
-            flagpoleCandles.get(0).getLow(),
-            flagpoleCandles.get(flagpoleCandles.size() - 1).getHigh()
-        );
-
-
-       
-        
-        if (flagpoleMove < FLAGPOLE_MIN_UPTREND) {
-            return false;
-        }
-        
-        // Check flag consolidation
-        int flagStart = flagpoleStart + MIN_FLAGPOLE_CANDLES;
-        List<Candle> flagCandles = candles.subList(flagStart, candles.size());
-        
-
-
-        if (flagCandles.size() < MIN_FLAG_CANDLES) {
-            return false;
-        }
-        
-        // Check for slight downtrend (retracement < 50%)
-        double flagHigh = getHighest(flagCandles);
-        double flagLow = getLowest(flagCandles);
-        double retracement = (flagHigh - flagLow) / flagpoleMove;
-
-
-       
-        
-        if (retracement > MAX_RETRACEMENT) {
-            return false;
-        }
-        
-        // Check for breakout
-        Candle lastCandle = candles.get(candles.size() - 1);
-       
-        if (lastCandle.getClose() <= flagHigh) {
-            return false;
-        }
-        
-        // Volume confirmation
-        double avgVolume = patternUtils.calculateAverageVolume(candles, 20);
-        
-        if (lastCandle.getVolume() < avgVolume * VOLUME_THRESHOLD) {
-            return false;
-        }
-        
-        log.info("Bull Flag detected: Flagpole Move={}, Retracement={}", 
-            String.format("%.2f%%", flagpoleMove),
-            String.format("%.2f%%", retracement * 100));
-        
-        return true;
-    }
     
     @Override
     public PatternResult detectWithResult(List<Candle> candles) {
-        if (!detect(candles)) {
-            return PatternResult.none();
+        if (candles == null || candles.size() < MIN_FLAGPOLE_CANDLES + MIN_FLAG_CANDLES) {
+            return PatternResult.builder()
+                .pattern(ChartPattern.BULL_FLAG)
+                .confidence(0)
+                .description("Bull Flag: not enough candles to evaluate")
+                .direction("BULLISH")
+                .detectionTime(System.currentTimeMillis())
+                .build();
         }
-        
+
         int flagpoleStart = Math.max(0, candles.size() - MIN_FLAGPOLE_CANDLES - MIN_FLAG_CANDLES);
         List<Candle> flagpoleCandles = candles.subList(flagpoleStart, flagpoleStart + MIN_FLAGPOLE_CANDLES);
         
         double flagpoleLow = getLowest(flagpoleCandles);
         double flagpoleHigh = getHighest(flagpoleCandles);
         double flagpoleHeight = flagpoleHigh - flagpoleLow;
+
+        // Verify the flagpole actually trended UP, not just that it had range.
+        // A high-low spread alone doesn't tell you direction.
+        double poleOpen = flagpoleCandles.get(0).getOpen();
+        double poleClose = flagpoleCandles.get(flagpoleCandles.size() - 1).getClose();
+        double poleGainPct = patternUtils.percentageDifference(poleOpen, poleClose);
+        boolean isValidUptrend = poleClose > poleOpen && Math.abs(poleGainPct) >= FLAGPOLE_MIN_UPTREND;
+
+        if (!isValidUptrend) {
+            return PatternResult.builder()
+                .pattern(ChartPattern.BULL_FLAG)
+                .confidence(0)
+                .description("Bull Flag: flagpole segment did not show a sufficient uptrend")
+                .direction("BULLISH")
+                .detectionTime(System.currentTimeMillis())
+                .build();
+        }
         
         int flagStart = flagpoleStart + MIN_FLAGPOLE_CANDLES;
         List<Candle> flagCandles = candles.subList(flagStart, candles.size());
         
         double flagHigh = getHighest(flagCandles);
         double flagLow = getLowest(flagCandles);
+
+        // Retracement: how much of the flagpole's gain has the flag body given back.
+        // Bull flag expects this to stay under MAX_RETRACEMENT (50%).
+        double retracement = flagpoleHeight > 0 ? (flagpoleHigh - flagLow) / flagpoleHeight : 1.0;
         
         Candle lastCandle = candles.get(candles.size() - 1);
         
@@ -146,7 +108,7 @@ public class BullFlagDetector implements PatternDetector {
         double target = flagHigh + flagpoleHeight;
         double stopLoss = flagLow - (flagpoleHeight * 0.1);
         
-        int confidence = calculateConfidence(candles, flagpoleHeight, flagHigh, flagLow, lastCandle);
+        int confidence = calculateConfidence(candles, flagpoleHeight, flagHigh, flagLow, retracement, lastCandle);
         
         return PatternResult.builder()
             .pattern(ChartPattern.BULL_FLAG)
@@ -172,23 +134,32 @@ public class BullFlagDetector implements PatternDetector {
         return candles.stream().mapToDouble(Candle::getLow).min().orElse(Double.MAX_VALUE);
     }
     
-    private int calculateConfidence(List<Candle> candles, double flagpoleHeight, double flagHigh, double flagLow, Candle lastCandle) {
+    private int calculateConfidence(List<Candle> candles, double flagpoleHeight, double flagHigh, double flagLow,
+                                     double retracement, Candle lastCandle) {
         int confidence = 60;
         
         // Flagpole strength
         if (flagpoleHeight > 3.0) confidence += 15;
         else if (flagpoleHeight > 2.0) confidence += 10;
+
+        // Retracement discipline - now actually uses MAX_RETRACEMENT
+        if (retracement <= MAX_RETRACEMENT) {
+            confidence += 10;
+        } else {
+            // Flag body gave back too much of the flagpole's move - weaker setup
+            confidence -= 15;
+        }
         
-        // Volume
+        // Volume - now uses the declared threshold constant
         double avgVolume = patternUtils.calculateAverageVolume(candles, 20);
-        if (lastCandle.getVolume() > avgVolume * 1.2) {
+        if (lastCandle.getVolume() > avgVolume * (1 + VOLUME_THRESHOLD)) {
             confidence += 20;
         }
         
-        // Breakout
+        // Breakout - now uses the declared threshold constant
         double breakout = Math.abs(patternUtils.percentageDifference(flagHigh, lastCandle.getClose()));
-        if (breakout > 1.0) confidence += 15;
+        if (breakout > BREAKOUT_THRESHOLD) confidence += 15;
         
-        return Math.min(100, confidence);
+        return Math.max(0, Math.min(100, confidence));
     }
 }

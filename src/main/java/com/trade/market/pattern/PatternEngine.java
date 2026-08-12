@@ -1,18 +1,13 @@
 package com.trade.market.pattern;
-
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
-
-import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Collectors;
-
+import org.springframework.stereotype.Component;
+import lombok.extern.slf4j.Slf4j;
 /**
  * Main orchestrator for chart pattern detection.
  * Automatically discovers all PatternDetector implementations via Spring DI.
  * Detects patterns from OHLC candlestick data and returns the first confirmed pattern
  * with sufficient confidence, or NONE if no patterns are detected.
- * 
+ *
  * Pattern detection is performed in priority order (higher priority detectors checked first).
  * Detectors are thread-safe and operate independently.
  */
@@ -22,25 +17,24 @@ public class PatternEngine {
 
     private final List<PatternDetector> detectors;
     private static final int MINIMUM_CONFIDENCE = 50; // Minimum confidence to report a pattern
+    private static final double FALLBACK_MOVE_THRESHOLD = 0.5; // % move required to trigger fallback
 
     /**
      * Constructs the PatternEngine with auto-discovered detectors.
      * Spring will inject all beans implementing PatternDetector.
-     * 
+     *
      * @param detectors list of detected pattern detector implementations
      */
     public PatternEngine(List<PatternDetector> detectors) {
-        // Ensure we have a mutable list to allow sorting and modifications
         this.detectors = detectors != null ? new java.util.ArrayList<>(detectors) : new java.util.ArrayList<>();
-        // Sort by priority (higher first)
         this.detectors.sort((a, b) -> Integer.compare(b.getPriority(), a.getPriority()));
         log.info("PatternEngine initialized with {} detectors", this.detectors.size());
     }
 
     /**
      * Detects chart patterns from candlestick data.
-     * Returns the first confirmed pattern with sufficient confidence.
-     * 
+     * Returns the first confirmed pattern with sufficient confidence, or NONE.
+     *
      * @param symbol the trading symbol (for logging)
      * @param candles list of OHLC candles to analyze (must not be empty)
      * @return PatternResult containing pattern detection details, or NONE if no pattern detected
@@ -56,21 +50,22 @@ public class PatternEngine {
             return PatternResult.none();
         }
 
-        // Try each detector in priority order and accept any non-empty pattern result.
         for (PatternDetector detector : detectors) {
             try {
                 log.debug("Running detector {} for symbol {} on {} candles", detector.pattern(), symbol, candles.size());
                 PatternResult result = detector.detectWithResult(candles);
 
                 if (result != null && result.isPatternDetected()) {
+                    // Enforce the documented confidence gate instead of just logging it.
                     if (result.getConfidence() < MINIMUM_CONFIDENCE) {
-                        log.info("Pattern detected for {} using {} with low confidence {}% - accepting result for persistence/publishing",
-                                symbol, detector.pattern(), result.getConfidence());
-                    } else {
-                        log.info("Pattern detected for {}: {} (confidence: {}%, breakout: {})",
-                                symbol, result.getPattern().getDisplayName(), result.getConfidence(),
-                                String.format("%.2f", result.getBreakoutPrice()));
+                        log.info("Detector {} produced pattern for {} with confidence {}% below minimum {}% - discarding",
+                                detector.pattern(), symbol, result.getConfidence(), MINIMUM_CONFIDENCE);
+                        continue; // try the next detector instead of returning a weak/garbage result
                     }
+
+                    log.info("Pattern detected for {}: {} (confidence: {}%, breakout: {})",
+                            symbol, result.getPattern().getDisplayName(), result.getConfidence(),
+                            String.format("%.2f", result.getBreakoutPrice()));
 
                     result.setDetectionTime(System.currentTimeMillis());
                     return result;
@@ -93,11 +88,19 @@ public class PatternEngine {
 
         Candle previous = candles.get(candles.size() - 2);
         Candle last = candles.get(candles.size() - 1);
+
+        // Guard against div-by-zero / bad data instead of propagating NaN/Infinity.
+        if (previous.getClose() <= 0) {
+            log.warn("Invalid previous close ({}) for {}, skipping fallback pattern", previous.getClose(), symbol);
+            return PatternResult.none();
+        }
+
         double changePercent = ((last.getClose() - previous.getClose()) / previous.getClose()) * 100.0;
 
-        if (changePercent >= 0.5) {
+        if (changePercent >= FALLBACK_MOVE_THRESHOLD) {
             PatternResult result = PatternResult.builder()
                     .pattern(ChartPattern.RESISTANCE_BREAKOUT)
+                    .patternDetected(true) // <-- was missing; caused isPatternDetected() to always be false
                     .confidence(Math.min(90, 60 + (int) Math.round(Math.abs(changePercent) * 2)))
                     .breakoutPrice(last.getClose())
                     .target(last.getClose() + (last.getHigh() - last.getLow()) * 1.5)
@@ -105,14 +108,16 @@ public class PatternEngine {
                     .description("Fallback bullish breakout based on recent price movement")
                     .direction("BULLISH")
                     .patternLength(candles.size())
+                    .detectionTime(System.currentTimeMillis())
                     .build();
             log.info("Fallback breakout pattern produced for {} with {}% move", symbol, String.format("%.2f", changePercent));
             return result;
         }
 
-        if (changePercent <= -0.5) {
+        if (changePercent <= -FALLBACK_MOVE_THRESHOLD) {
             PatternResult result = PatternResult.builder()
                     .pattern(ChartPattern.SUPPORT_BREAKDOWN)
+                    .patternDetected(true) // <-- was missing; caused isPatternDetected() to always be false
                     .confidence(Math.min(90, 60 + (int) Math.round(Math.abs(changePercent) * 2)))
                     .breakoutPrice(last.getClose())
                     .target(last.getClose() - (last.getHigh() - last.getLow()) * 1.5)
@@ -120,6 +125,7 @@ public class PatternEngine {
                     .description("Fallback bearish breakdown based on recent price movement")
                     .direction("BEARISH")
                     .patternLength(candles.size())
+                    .detectionTime(System.currentTimeMillis())
                     .build();
             log.info("Fallback breakdown pattern produced for {} with {}% move", symbol, String.format("%.2f", changePercent));
             return result;
@@ -130,18 +136,18 @@ public class PatternEngine {
 
     /**
      * Gets all available detectors sorted by priority.
-     * 
+     *
      * @return list of pattern detectors in priority order
      */
     public List<PatternDetector> getDetectors() {
-        return detectors.stream()
-            .sorted(Comparator.comparingInt(PatternDetector::getPriority).reversed())
-            .collect(Collectors.toList());
+        // Detectors are already sorted in the constructor; return a defensive copy
+        // without re-sorting to avoid duplicating that work on every call.
+        return List.copyOf(detectors);
     }
 
     /**
      * Gets the number of registered detectors.
-     * 
+     *
      * @return count of available pattern detectors
      */
     public int getDetectorCount() {
@@ -151,7 +157,7 @@ public class PatternEngine {
     /**
      * Legacy method for backward compatibility.
      * Returns pattern name as string.
-     * 
+     *
      * @param symbol the trading symbol
      * @param candles list of candles
      * @return pattern name or "NONE"

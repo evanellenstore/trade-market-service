@@ -14,14 +14,19 @@ import java.util.List;
  * - Three valleys: left shoulder, head (lowest), right shoulder
  * - Left shoulder and right shoulder at approximately equal depths (within 2%)
  * - Head significantly lower than shoulders (at least 2%)
- * - Two peaks form the neckline (resistance line)
- * - Close above neckline confirms the bullish reversal
- * - Volume decreases into valleys
+ * - Two peaks form the neckline (resistance line), which must themselves be
+ *   roughly level (within 1.5x the shoulder tolerance)
+ * - Close above neckline confirms the bullish reversal, provided price does
+ *   not close back below the head first (which invalidates the pattern)
  * - Volume increases on neckline break above
  * 
  * Signal: Bullish reversal - strong uptrend expected
  * Target: Neckline + (neckline - head)
  * Stop Loss: Below the head
+ *
+ * Note: among multiple valid triples of swing lows, the detector prefers the
+ * most recent one (closest to the end of the candle series), since that is
+ * the pattern most relevant to a live/current detection use case.
  */
 @Component
 @Slf4j
@@ -34,8 +39,10 @@ public class InverseHeadAndShouldersDetector implements PatternDetector {
     private static final int PIVOT_LEFT_BARS = 3;
     private static final int PIVOT_RIGHT_BARS = 3;
     private static final double SHOULDER_TOLERANCE = 2.0;
+    private static final double NECKLINE_TOLERANCE = SHOULDER_TOLERANCE * 1.5; // neckline peaks must be roughly level
     private static final double HEAD_DEPTH_MIN = 2.0; // Head must be 2% lower than shoulders
-    private static final double VOLUME_THRESHOLD_PERCENT = 0.8;
+    private static final double VOLUME_BREAKOUT_STRONG_MULTIPLIER = 1.2;
+    private static final double VOLUME_BREAKOUT_MIN_MULTIPLIER = 0.8;
     private static final double BREAKOUT_THRESHOLD = 0.5;
     
     public InverseHeadAndShouldersDetector(PivotDetector pivotDetector, PatternUtils patternUtils) {
@@ -58,119 +65,60 @@ public class InverseHeadAndShouldersDetector implements PatternDetector {
         return 70; // High priority - mirror of H&S pattern
     }
     
-    @Override
-    public boolean detect(List<Candle> candles) {
-        if (candles.size() < 30) {
-            return false;
-        }
-        
-        List<PivotPoint> swingHighs = pivotDetector.detectSwingHighs(candles, PIVOT_LEFT_BARS, PIVOT_RIGHT_BARS);
-        List<PivotPoint> swingLows = pivotDetector.detectSwingLows(candles, PIVOT_LEFT_BARS, PIVOT_RIGHT_BARS);
-        
-        // Need at least 3 lows and 2 highs
-        if (swingLows.size() < 3 || swingHighs.size() < 2) {
-            return false;
-        }
-        
-        // Look for three consecutive lows
-        for (int i = 0; i < swingLows.size() - 2; i++) {
-            PivotPoint leftShoulder = swingLows.get(i);
-            PivotPoint head = swingLows.get(i + 1);
-            PivotPoint rightShoulder = swingLows.get(i + 2);
-            
-            // Head must be significantly lower than shoulders
-            if (!isValidHeadDepth(leftShoulder.getPrice(), head.getPrice(), rightShoulder.getPrice())) {
-                continue;
-            }
-            
-            // Shoulders should be approximately equal
-            if (!patternUtils.pricesApproximatelyEqual(leftShoulder.getPrice(), rightShoulder.getPrice(), SHOULDER_TOLERANCE)) {
-                continue;
-            }
-            
-            // Find neckline pivots (peaks between shoulders and head)
-            List<PivotPoint> necklinePivots = findNecklinePivots(swingHighs, leftShoulder.getIndex(), head.getIndex(), rightShoulder.getIndex());
-            if (necklinePivots.size() < 2) {
-                continue;
-            }
-            
-            PivotPoint neckline1 = necklinePivots.get(0);
-            PivotPoint neckline2 = necklinePivots.get(1);
-            
-            // Check for breakout confirmation
-            Candle lastCandle = candles.get(candles.size() - 1);
-            double necklineLevel = Math.min(neckline1.getPrice(), neckline2.getPrice());
-            
-            if (lastCandle.getClose() <= necklineLevel) {
-                continue; // Not broken above neckline
-            }
-            
-            // Volume confirmation
-            double avgVolume = patternUtils.calculateAverageVolume(candles, 20);
-            if (lastCandle.getVolume() < avgVolume * VOLUME_THRESHOLD_PERCENT) {
-                log.debug("Inverse H&S: Insufficient volume");
-                continue;
-            }
-            
-            log.info("Inverse Head and Shoulders detected: LS={}, Head={}, RS={}, Neckline={}", 
-                String.format("%.2f", leftShoulder.getPrice()),
-                String.format("%.2f", head.getPrice()),
-                String.format("%.2f", rightShoulder.getPrice()),
-                String.format("%.2f", necklineLevel));
-            
-            return true;
-        }
-        
-        return false;
-    }
     
     @Override
     public PatternResult detectWithResult(List<Candle> candles) {
-        if (!detect(candles)) {
-            return PatternResult.none();
-        }
-        
         List<PivotPoint> swingHighs = pivotDetector.detectSwingHighs(candles, PIVOT_LEFT_BARS, PIVOT_RIGHT_BARS);
         List<PivotPoint> swingLows = pivotDetector.detectSwingLows(candles, PIVOT_LEFT_BARS, PIVOT_RIGHT_BARS);
-        
-        for (int i = 0; i < swingLows.size() - 2; i++) {
+
+        // Walk from the most recent triple of swing lows backwards, so that if
+        // multiple valid patterns exist in the series we surface the freshest one.
+        for (int i = swingLows.size() - 3; i >= 0; i--) {
             PivotPoint leftShoulder = swingLows.get(i);
             PivotPoint head = swingLows.get(i + 1);
             PivotPoint rightShoulder = swingLows.get(i + 2);
-            
+
             if (!isValidHeadDepth(leftShoulder.getPrice(), head.getPrice(), rightShoulder.getPrice())) {
                 continue;
             }
-            
+
             if (!patternUtils.pricesApproximatelyEqual(leftShoulder.getPrice(), rightShoulder.getPrice(), SHOULDER_TOLERANCE)) {
                 continue;
             }
-            
+
             List<PivotPoint> necklinePivots = findNecklinePivots(swingHighs, leftShoulder.getIndex(), head.getIndex(), rightShoulder.getIndex());
             if (necklinePivots.size() < 2) {
                 continue;
             }
-            
+
             PivotPoint neckline1 = necklinePivots.get(0);
             PivotPoint neckline2 = necklinePivots.get(1);
-            double necklineLevel = Math.min(neckline1.getPrice(), neckline2.getPrice());
-            
-            Candle lastCandle = candles.get(candles.size() - 1);
-            if (lastCandle.getClose() <= necklineLevel) {
+
+            // Reject necklines whose two peaks are too far apart in price to be
+            // considered a coherent resistance line.
+            if (!patternUtils.pricesApproximatelyEqual(neckline1.getPrice(), neckline2.getPrice(), NECKLINE_TOLERANCE)) {
                 continue;
             }
-            
+
+            double necklineLevel = Math.max(neckline1.getPrice(), neckline2.getPrice());
+
+            Candle breakoutCandle = findValidBreakoutCandle(candles, rightShoulder.getIndex() + 1, head.getPrice(), necklineLevel);
+            if (breakoutCandle == null) {
+                continue;
+            }
+
             // Calculate targets
             double patternHeight = necklineLevel - head.getPrice();
             double target = necklineLevel + patternHeight;
             double stopLoss = head.getPrice() - (patternHeight * 0.1);
-            
-            int confidence = calculateConfidence(candles, leftShoulder, head, rightShoulder, neckline1, neckline2, lastCandle);
-            
+
+            int confidence = calculateConfidence(candles, leftShoulder, head, rightShoulder, neckline1, neckline2, breakoutCandle);
+
             return PatternResult.builder()
                 .pattern(ChartPattern.INVERSE_HEAD_AND_SHOULDERS)
+                .patternDetected(true)
                 .confidence(confidence)
-                .breakoutPrice(lastCandle.getClose())
+                .breakoutPrice(breakoutCandle.getClose())
                 .stopLoss(stopLoss)
                 .target(target)
                 .secondaryTarget(necklineLevel)
@@ -184,7 +132,7 @@ public class InverseHeadAndShouldersDetector implements PatternDetector {
                 .detectionTime(System.currentTimeMillis())
                 .build();
         }
-        
+
         return PatternResult.none();
     }
     
@@ -228,6 +176,28 @@ public class InverseHeadAndShouldersDetector implements PatternDetector {
     }
     
     /**
+     * Finds the first candle after the right shoulder that closes above the neckline
+     * level, provided price does not close back below the head first. A close below
+     * the head before the breakout invalidates the pattern (the "head" is no longer
+     * the lowest point), so the pattern is rejected rather than matched against a
+     * breakout that may occur much later under a different market structure.
+     */
+    private Candle findValidBreakoutCandle(List<Candle> candles, int startIndex, double headPrice, double necklineLevel) {
+        for (int i = Math.max(0, startIndex); i < candles.size(); i++) {
+            Candle candle = candles.get(i);
+
+            if (candle.getClose() < headPrice) {
+                return null; // pattern invalidated before a valid breakout occurred
+            }
+
+            if (candle.getClose() > necklineLevel) {
+                return candle;
+            }
+        }
+        return null;
+    }
+    
+    /**
      * Calculates confidence score.
      */
     private int calculateConfidence(List<Candle> candles, PivotPoint leftShoulder, PivotPoint head,
@@ -256,14 +226,14 @@ public class InverseHeadAndShouldersDetector implements PatternDetector {
         
         // Volume
         double avgVolume = patternUtils.calculateAverageVolume(candles, 20);
-        if (breakoutCandle.getVolume() > avgVolume * 1.2) {
+        if (breakoutCandle.getVolume() > avgVolume * VOLUME_BREAKOUT_STRONG_MULTIPLIER) {
             confidence += 20;
-        } else if (breakoutCandle.getVolume() > avgVolume * 0.8) {
+        } else if (breakoutCandle.getVolume() > avgVolume * VOLUME_BREAKOUT_MIN_MULTIPLIER) {
             confidence += 10;
         }
         
         // Neckline quality
-        double necklineLevel = Math.min(neckline1.getPrice(), neckline2.getPrice());
+        double necklineLevel = Math.max(neckline1.getPrice(), neckline2.getPrice());
         double breakoutPercent = Math.abs(patternUtils.percentageDifference(necklineLevel, breakoutCandle.getClose()));
         if (breakoutPercent > 1.0) {
             confidence += 20;

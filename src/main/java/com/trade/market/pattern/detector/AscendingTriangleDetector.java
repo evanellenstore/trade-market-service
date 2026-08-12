@@ -29,7 +29,7 @@ public class AscendingTriangleDetector implements PatternDetector {
     private final PatternUtils patternUtils;
     
     // Configuration constants
-    private static final int MIN_PATTERN_CANDLES = 15;
+
     private static final double RESISTANCE_TOLERANCE = 0.5; // 0.5% tolerance for resistance
     private static final double CONVERGENCE_THRESHOLD = 0.95; // 95% converged
     private static final int MIN_TOUCHES = 3;
@@ -56,65 +56,49 @@ public class AscendingTriangleDetector implements PatternDetector {
         return 55; // Medium priority
     }
     
-    @Override
-    public boolean detect(List<Candle> candles) {
-        if (candles.size() < MIN_PATTERN_CANDLES) {
-            return false;
-        }
-        
-        List<PivotPoint> swingHighs = pivotDetector.detectSwingHighs(candles, 2, 2);
-        List<PivotPoint> swingLows = pivotDetector.detectSwingLows(candles, 2, 2);
-        
-        if (swingHighs.size() < MIN_TOUCHES || swingLows.size() < MIN_TOUCHES) {
-            return false;
-        }
-        
-        // Find flat resistance level (highs at same level)
-        double resistance = findFlatResistance(swingHighs);
-        if (resistance <= 0) {
-            return false;
-        }
-        
-        // Check for rising support
-        if (!patternUtils.isHigherLows(candles.subList(Math.max(0, candles.size() - 15), candles.size()))) {
-            return false;
-        }
-        
-        // Check for convergence
-        if (!isConverging(swingHighs, swingLows)) {
-            return false;
-        }
-        
-        // Check breakout
-        Candle lastCandle = candles.get(candles.size() - 1);
-        if (lastCandle.getClose() <= resistance) {
-            return false;
-        }
-        
-        double avgVolume = patternUtils.calculateAverageVolume(candles, 20);
-        if (lastCandle.getVolume() < avgVolume * VOLUME_THRESHOLD) {
-            return false;
-        }
-        
-        log.info("Ascending Triangle detected: Resistance={}, Support={}", 
-            String.format("%.2f", resistance),
-            String.format("%.2f", swingLows.get(swingLows.size() - 1).getPrice()));
-        
-        return true;
-    }
     
     @Override
     public PatternResult detectWithResult(List<Candle> candles) {
-        if (!detect(candles)) {
-            return PatternResult.none();
+        if (candles == null || candles.isEmpty()) {
+            return PatternResult.builder()
+                .pattern(ChartPattern.ASCENDING_TRIANGLE)
+                .confidence(0)
+                .description("Ascending Triangle: insufficient candle data")
+                .direction("BULLISH")
+                .detectionTime(System.currentTimeMillis())
+                .build();
         }
-        
+
         List<PivotPoint> swingHighs = pivotDetector.detectSwingHighs(candles, 2, 2);
         List<PivotPoint> swingLows = pivotDetector.detectSwingLows(candles, 2, 2);
-        
+
+        // Not enough structure to even attempt the pattern - bail out with zero confidence
+        // instead of feeding empty/short lists into resistance/support/height math below.
+        if (swingHighs.size() < MIN_TOUCHES || swingLows.isEmpty()) {
+            return PatternResult.builder()
+                .pattern(ChartPattern.ASCENDING_TRIANGLE)
+                .confidence(0)
+                .description("Ascending Triangle: not enough pivots to evaluate")
+                .direction("BULLISH")
+                .detectionTime(System.currentTimeMillis())
+                .build();
+        }
+
         double resistance = findFlatResistance(swingHighs);
         double support = patternUtils.getLowestPivot(swingLows).getPrice();
-        
+
+        // No valid flat resistance found, or resistance isn't actually above support -
+        // this isn't a valid ascending triangle, don't compute a fake target/stop.
+        if (resistance <= 0 || resistance <= support) {
+            return PatternResult.builder()
+                .pattern(ChartPattern.ASCENDING_TRIANGLE)
+                .confidence(0)
+                .description("Ascending Triangle: no valid flat resistance above support")
+                .direction("BULLISH")
+                .detectionTime(System.currentTimeMillis())
+                .build();
+        }
+
         double patternHeight = resistance - support;
         double target = resistance + patternHeight;
         double stopLoss = support - (patternHeight * 0.1);
@@ -138,22 +122,32 @@ public class AscendingTriangleDetector implements PatternDetector {
             .build();
     }
     
+    /**
+     * Finds the resistance level touched by the most swing highs (mode),
+     * rather than anchoring on a single fixed pivot.
+     */
     private double findFlatResistance(List<PivotPoint> swingHighs) {
         if (swingHighs.size() < MIN_TOUCHES) {
             return 0;
         }
-        
-        // Find the mode (most common resistance level)
-        double firstLevel = swingHighs.get(swingHighs.size() - MIN_TOUCHES).getPrice();
-        int count = 0;
-        
-        for (PivotPoint high : swingHighs) {
-            if (patternUtils.pricesApproximatelyEqual(high.getPrice(), firstLevel, RESISTANCE_TOLERANCE)) {
-                count++;
+
+        double bestLevel = 0;
+        int bestCount = 0;
+
+        for (PivotPoint candidate : swingHighs) {
+            int count = 0;
+            for (PivotPoint high : swingHighs) {
+                if (patternUtils.pricesApproximatelyEqual(high.getPrice(), candidate.getPrice(), RESISTANCE_TOLERANCE)) {
+                    count++;
+                }
+            }
+            if (count > bestCount) {
+                bestCount = count;
+                bestLevel = candidate.getPrice();
             }
         }
-        
-        return count >= MIN_TOUCHES ? firstLevel : 0;
+
+        return bestCount >= MIN_TOUCHES ? bestLevel : 0;
     }
     
     private boolean isConverging(List<PivotPoint> swingHighs, List<PivotPoint> swingLows) {
@@ -190,17 +184,25 @@ public class AscendingTriangleDetector implements PatternDetector {
         if (patternUtils.isHigherLows(candles.subList(Math.max(0, candles.size() - 15), candles.size()))) {
             confidence += 20;
         }
+
+        // Converging trendlines - was previously computed but never used
+        if (isConverging(swingHighs, swingLows)) {
+            confidence += 10;
+        } else {
+            // A non-converging channel isn't really a triangle; penalize it
+            confidence -= 15;
+        }
         
-        // Volume
+        // Volume - now actually uses the declared threshold constant
         double avgVolume = patternUtils.calculateAverageVolume(candles, 20);
-        if (lastCandle.getVolume() > avgVolume * 1.2) {
+        if (lastCandle.getVolume() > avgVolume * (1 + VOLUME_THRESHOLD)) {
             confidence += 20;
         }
         
-        // Breakout percentage
+        // Breakout percentage - now uses the declared threshold constant
         double breakout = Math.abs(patternUtils.percentageDifference(resistance, lastCandle.getClose()));
-        if (breakout > 1.0) confidence += 15;
+        if (breakout > BREAKOUT_THRESHOLD) confidence += 15;
         
-        return Math.min(100, confidence);
+        return Math.max(0, Math.min(100, confidence));
     }
 }

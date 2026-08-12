@@ -14,7 +14,10 @@ public interface PatternDetector {
      * @param candles list of candlesticks to analyze (must not be empty)
      * @return true if the pattern is detected, false otherwise
      */
-    boolean detect(List<Candle> candles);
+    default boolean detect(List<Candle> candles) {
+        PatternResult result = detectWithResult(candles);
+        return result != null && result.isPatternDetected();
+    }
     
     /**
      * Returns the chart pattern that this detector identifies.

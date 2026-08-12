@@ -89,7 +89,12 @@ class IndicatorProcessorServiceTest {
         when(liveMarketDataSource.getCandles(symbol, "ONE_MINUTE", 500)).thenReturn(List.of(newest, oldest));
         when(barSeriesManager.getSeriesByKey(symbol, "ONE_MINUTE")).thenReturn(null);
         when(indicatorService.calculateIndicatorsBySeriesKey(eq(symbol), eq("ONE_MINUTE"), eq(symbol), eq("BTC"), eq(newest.getCandleTime()), anyList()))
-                .thenReturn(mock(IndicatorResultDto.class));
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    List<Double> closes = invocation.getArgument(5);
+                    assertEquals(List.of(99.5, 100.5), closes);
+                    return mock(IndicatorResultDto.class);
+                });
         when(patternEngine.detectPattern(anyString(), anyList())).thenReturn(PatternResult.none());
 
         indicatorProcessorService.processLatestIndicatorsLive();

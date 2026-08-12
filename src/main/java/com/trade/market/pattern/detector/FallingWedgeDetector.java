@@ -55,72 +55,64 @@ public class FallingWedgeDetector implements PatternDetector {
     }
     
     @Override
-    public boolean detect(List<Candle> candles) {
-        if (candles.size() < MIN_PATTERN_CANDLES) {
-            return false;
-        }
-        
-        List<PivotPoint> swingHighs = pivotDetector.detectSwingHighs(candles, 2, 2);
-        List<PivotPoint> swingLows = pivotDetector.detectSwingLows(candles, 2, 2);
-        
-        if (swingHighs.size() < MIN_TOUCHES || swingLows.size() < MIN_TOUCHES) {
-            return false;
-        }
-        
-        // Check for lower highs
-        if (!patternUtils.isLowerHighs(candles.subList(Math.max(0, candles.size() - 15), candles.size()))) {
-            return false;
-        }
-        
-        // Check for lower lows
-        if (!patternUtils.isLowerLows(candles.subList(Math.max(0, candles.size() - 15), candles.size()))) {
-            return false;
-        }
-        
-        // Check for convergence
-        if (!isConverging(swingHighs, swingLows)) {
-            return false;
-        }
-        
-        // Check for breakout confirmation
-        Candle lastCandle = candles.get(candles.size() - 1);
-        double resistance = patternUtils.getHighestPivot(swingHighs).getPrice();
-        
-        if (lastCandle.getClose() <= resistance) {
-            return false;
-        }
-        
-        double avgVolume = patternUtils.calculateAverageVolume(candles, 20);
-        if (lastCandle.getVolume() < avgVolume * VOLUME_THRESHOLD) {
-            return false;
-        }
-        
-        log.info("Falling Wedge detected: Breakout above resistance={}", 
-            String.format("%.2f", resistance));
-        
-        return true;
-    }
-    
-    @Override
     public PatternResult detectWithResult(List<Candle> candles) {
-        if (!detect(candles)) {
+        if (candles == null || candles.size() < MIN_PATTERN_CANDLES) {
             return PatternResult.none();
         }
-        
+
         List<PivotPoint> swingHighs = pivotDetector.detectSwingHighs(candles, 2, 2);
         List<PivotPoint> swingLows = pivotDetector.detectSwingLows(candles, 2, 2);
-        
-        double resistance = patternUtils.getHighestPivot(swingHighs).getPrice();
-        double support = patternUtils.getLowestPivot(swingLows).getPrice();
+
+        // Need enough touches on each side to call this a real wedge, not noise.
+        if (swingHighs.size() < MIN_TOUCHES || swingLows.size() < MIN_TOUCHES) {
+            return PatternResult.none();
+        }
+
+        PivotPoint highestPivot = patternUtils.getHighestPivot(swingHighs);
+        PivotPoint lowestPivot = patternUtils.getLowestPivot(swingLows);
+        if (highestPivot == null || lowestPivot == null) {
+            return PatternResult.none();
+        }
+
+        double resistance = highestPivot.getPrice();
+        double support = lowestPivot.getPrice();
         double wedgeHeight = resistance - support;
-        
+        if (wedgeHeight <= 0) {
+            return PatternResult.none();
+        }
+
+        List<Candle> recentWindow = candles.subList(
+            Math.max(0, candles.size() - MIN_PATTERN_CANDLES), candles.size());
+
+        // Structural checks that were previously computed but never gated on.
+        if (!patternUtils.isLowerHighs(recentWindow) || !patternUtils.isLowerLows(recentWindow)) {
+            return PatternResult.none();
+        }
+        if (!isConverging(swingHighs, swingLows)) {
+            return PatternResult.none();
+        }
+
         Candle lastCandle = candles.get(candles.size() - 1);
-        
+
+        // Confirm an actual bullish breakout above resistance before calling this a signal.
+        if (lastCandle.getClose() <= resistance) {
+            return PatternResult.none();
+        }
+        double breakoutPercent = patternUtils.percentageDifference(resistance, lastCandle.getClose());
+        if (breakoutPercent < BREAKOUT_THRESHOLD) {
+            return PatternResult.none();
+        }
+
         double target = resistance + wedgeHeight;
         double stopLoss = support - (wedgeHeight * 0.1);
-        
+
         int confidence = calculateConfidence(candles, swingHighs, swingLows, resistance, support, lastCandle);
-        
+
+        int firstIndex = Math.min(swingHighs.get(0).getIndex(), swingLows.get(0).getIndex());
+        int lastIndex = Math.max(
+            swingHighs.get(swingHighs.size() - 1).getIndex(),
+            swingLows.get(swingLows.size() - 1).getIndex());
+
         return PatternResult.builder()
             .pattern(ChartPattern.FALLING_WEDGE)
             .confidence(confidence)
@@ -130,7 +122,7 @@ public class FallingWedgeDetector implements PatternDetector {
             .secondaryTarget(resistance)
             .description("Falling Wedge: Resistance=" + String.format("%.2f", resistance) +
                 ", Support=" + String.format("%.2f", support))
-            .patternLength(swingHighs.get(swingHighs.size() - 1).getIndex() - swingLows.get(0).getIndex())
+            .patternLength(lastIndex - firstIndex)
             .direction("BULLISH")
             .riskRewardRatio(patternUtils.calculateRiskRewardRatio())
             .detectionTime(System.currentTimeMillis())
@@ -149,6 +141,10 @@ public class FallingWedgeDetector implements PatternDetector {
         
         double initialSpread = highStart.getPrice() - lowStart.getPrice();
         double finalSpread = highEnd.getPrice() - lowEnd.getPrice();
+
+        if (initialSpread <= 0) {
+            return false;
+        }
         
         return finalSpread < initialSpread * CONVERGENCE_THRESHOLD;
     }
@@ -172,10 +168,16 @@ public class FallingWedgeDetector implements PatternDetector {
         double avgVolume = patternUtils.calculateAverageVolume(candles, 20);
         if (lastCandle.getVolume() > avgVolume * 1.2) {
             confidence += 20;
+        } else if (lastCandle.getVolume() > avgVolume * VOLUME_THRESHOLD) {
+            confidence += 10;
         }
         
         double breakoutPercent = Math.abs(patternUtils.percentageDifference(resistance, lastCandle.getClose()));
-        if (breakoutPercent > 1.0) confidence += 15;
+        if (breakoutPercent > 1.0) {
+            confidence += 15;
+        } else if (breakoutPercent > BREAKOUT_THRESHOLD) {
+            confidence += 8;
+        }
         
         return Math.min(100, confidence);
     }

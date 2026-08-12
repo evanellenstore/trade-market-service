@@ -19,6 +19,8 @@ public class PatternResult {
     
     /** The detected chart pattern */
     private ChartPattern pattern;
+
+    private boolean patternDetected;
     
     /** Confidence score from 0 to 100 (higher is more reliable) */
     private int confidence;
@@ -58,7 +60,9 @@ public class PatternResult {
     public static PatternResult none() {
         return PatternResult.builder()
             .pattern(ChartPattern.NONE)
+            .patternDetected(false)
             .confidence(0)
+            .description("NoPatternDetected")
             .build();
     }
     
@@ -68,7 +72,7 @@ public class PatternResult {
      * @return true if a pattern other than NONE was detected
      */
     public boolean isPatternDetected() {
-        return pattern != null && pattern != ChartPattern.NONE;
+        return patternDetected;
     }
     
     /**
