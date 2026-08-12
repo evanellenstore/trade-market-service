@@ -20,7 +20,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -80,25 +83,82 @@ public class IndicatorProcessorService {
                     log.warn("Unable to process indicators for {}", symbol, e);
                 }
             }
-        } else {
-            log.info("Broker token mode set to backtest - running scheduled backtest for available symbols");
-            List<String> symbols = candleRepository.findDistinctSymbols();
-            String runId = "scheduled-backtest-" + System.currentTimeMillis();
-            for (String symbol : symbols) {
-                try {
-                    List<Candle> history = candleRepository.findBySymbolAndTimeframeOrderByCandleTimeDesc(symbol,
-                            ONE_MINUTE);
-                    if (history == null || history.isEmpty()) {
-                        continue;
-                    }
-                    // repository returns desc order, reverse to oldest-first
-                    java.util.Collections.reverse(history);
-                    runBacktest(symbol, history, runId);
-                } catch (Exception e) {
-                    log.warn("Unable to run scheduled backtest for {}", symbol, e);
+        } 
+    }
+
+    /**
+     * Runs a scheduled backtest for all available symbols and returns the generated runId.
+     * This extracts the logic previously embedded in the scheduled task so it can be
+     * invoked from other entry points (e.g. a controller).
+     *
+     * @return generated runId for the backtest
+     */
+    public String runScheduledBacktest() {
+        log.info("Broker token mode set to backtest - running scheduled backtest for available symbols");
+        List<String> symbols = candleRepository.findDistinctSymbols();
+        String runId = "scheduled-backtest-" + System.currentTimeMillis();
+        for (String symbol : symbols) {
+            try {
+                List<Candle> history = candleRepository.findBySymbolAndTimeframeOrderByCandleTimeDesc(symbol,
+                        ONE_MINUTE);
+                if (history == null || history.isEmpty()) {
+                    continue;
                 }
+                // repository returns desc order, reverse to oldest-first
+                java.util.Collections.reverse(history);
+                runBacktest(symbol, history, runId);
+            } catch (Exception e) {
+                log.warn("Unable to run scheduled backtest for {}", symbol, e);
             }
         }
+        return runId;
+    }
+
+    /**
+     * Runs a scheduled backtest for all available symbols limited to the provided
+     * start/end ISO-8601 datetimes (both optional). If both are null, behaves like
+     * {@link #runScheduledBacktest()}.
+     *
+     * @param startIso inclusive start datetime in ISO-8601 format (e.g. 2023-01-02T15:04:05Z)
+     * @param endIso   inclusive end datetime in ISO-8601 format
+     * @return generated runId for the backtest
+     */
+    public String runScheduledBacktest(String startIso, String endIso) {
+        final Instant start;
+        final Instant end;
+        try {
+            start = (startIso != null && !startIso.isBlank()) ? Instant.parse(startIso) : null;
+            end = (endIso != null && !endIso.isBlank()) ? Instant.parse(endIso) : null;
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException("startDatetime or endDatetime must be valid ISO-8601 strings", e);
+        }
+
+        log.info("Broker token mode set to backtest - running scheduled backtest for available symbols start={} end={}", start, end);
+        List<String> symbols = candleRepository.findDistinctSymbols();
+        String runId = "scheduled-backtest-" + System.currentTimeMillis();
+        for (String symbol : symbols) {
+            try {
+                List<Candle> history = candleRepository.findBySymbolAndTimeframeOrderByCandleTimeDesc(symbol,
+                        ONE_MINUTE);
+                if (history == null || history.isEmpty()) {
+                    continue;
+                }
+                // Use repository query to fetch only candles in the requested time window (inclusive).
+                LocalDateTime startLocal = (start != null) ? LocalDateTime.ofInstant(start, ZoneId.systemDefault()) : LocalDateTime.of(1970,1,1,0,0);
+                LocalDateTime endLocal = (end != null) ? LocalDateTime.ofInstant(end, ZoneId.systemDefault()) : LocalDateTime.of(3000,1,1,0,0);
+
+                List<Candle> ranged = candleRepository.findCandlesInTimeRange(symbol, ONE_MINUTE, startLocal, endLocal);
+                if (ranged == null || ranged.isEmpty()) {
+                    continue;
+                }
+
+                // repository returns ASC order (oldest-first), which is what runBacktest expects
+                runBacktest(symbol, ranged, runId);
+            } catch (Exception e) {
+                log.warn("Unable to run scheduled backtest for {}", symbol, e);
+            }
+        }
+        return runId;
     }
 
     /**

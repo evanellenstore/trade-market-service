@@ -51,6 +51,11 @@ public class CandleService {
 
         return indicatorService.calculateIndicators(symbol, timeframe, symbolToken, candleTime, closePrices);
     }
+
+    public List<String> getSymbols() {
+        log.debug("Loading distinct symbols from candles");
+        return candleRepository.findDistinctSymbols();
+    }
     
     private CandleDto convertToDto(Candle candle) {
         return CandleDto.builder()

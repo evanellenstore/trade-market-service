@@ -24,6 +24,13 @@ public class MarketController {
         return ResponseEntity.ok(ApiResponse.success(price, "Latest price retrieved"));
     }
     
+    @GetMapping("/symbols")
+    public ResponseEntity<ApiResponse<Object>> getSymbols() {
+        log.info("Loading available symbols");
+        var symbols = candleService.getSymbols();
+        return ResponseEntity.ok(ApiResponse.success(symbols, "Symbols retrieved"));
+    }
+    
     @GetMapping("/candles")
     public ResponseEntity<ApiResponse<Object>> getCandles(
             @RequestParam String symbol,
