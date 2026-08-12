@@ -93,7 +93,7 @@ class IndicatorProcessorServiceBacktestTest {
         verify(indicatorPersistenceService).save(any(IndicatorResultDto.class));
         //verify(patternPersistenceService).save(eq(symbol), eq(second.getSymbolToken()), eq("ONE_MINUTE"), eq(second.getCandleTime()), any(PatternResult.class));
         verify(kafkaProducerService, never()).publishIndicator(anyString(), any(IndicatorResultDto.class));
-        verify(kafkaProducerService, never()).publishPattern(anyString(), anyString());
+        verify(kafkaProducerService, never()).publishPattern(any());
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<com.trade.market.pattern.Candle>> candleCaptor = (ArgumentCaptor) ArgumentCaptor.forClass(List.class);

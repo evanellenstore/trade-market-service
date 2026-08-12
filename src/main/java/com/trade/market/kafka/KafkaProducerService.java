@@ -1,7 +1,8 @@
 package com.trade.market.kafka;
 
-import com.trade.market.entity.Candle;
 import com.trade.market.dto.IndicatorResultDto;
+import com.trade.market.dto.PatternMessage;
+import com.trade.market.entity.Candle;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,8 +35,8 @@ public class KafkaProducerService {
         log.debug("Published indicator update to {} for {}", indicatorTopic, symbol);
     }
 
-    public void publishPattern(String symbol, String patternName) {
-        kafkaTemplate.send(patternTopic, symbol, patternName);
-        log.debug("Published pattern {} to {}", patternName, patternTopic);
+    public void publishPattern(PatternMessage patternMessage) {
+        kafkaTemplate.send(patternTopic, patternMessage.getSymbol(), patternMessage);
+        log.debug("Published pattern {} for {} to {}", patternMessage.getPatternName(), patternMessage.getSymbol(), patternTopic);
     }
 }

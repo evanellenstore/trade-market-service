@@ -21,6 +21,7 @@ public class PatternPersistenceService {
                      String symbolToken,
                      String timeframe,
                      String runId,
+                     String origin,
                      LocalDateTime candleTime,
                      PatternResult patternResult) {
         MarketPattern.MarketPatternBuilder builder = MarketPattern.builder()
@@ -28,6 +29,7 @@ public class PatternPersistenceService {
                 .symbolToken(symbolToken)
                 .timeframe(timeframe)
                 .runId(runId)
+                .origin(origin)
                 .candleTime(candleTime);
 
         if (patternResult != null && patternResult.isPatternDetected()) {

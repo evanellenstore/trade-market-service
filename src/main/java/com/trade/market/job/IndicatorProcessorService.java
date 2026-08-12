@@ -15,8 +15,10 @@ import com.trade.market.service.BrokerTokenModeService;
 import com.trade.market.service.IndicatorPersistenceService;
 import com.trade.market.service.IndicatorService;
 import com.trade.market.service.PatternPersistenceService;
+import com.trade.market.service.ProcessingRunService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -48,6 +50,7 @@ public class IndicatorProcessorService {
     private final KafkaProducerService kafkaProducerService;
     private final IndicatorPersistenceService indicatorPersistenceService;
     private final PatternPersistenceService patternPersistenceService;
+    private final ProcessingRunService processingRunService;
     private final BarSeriesManager barSeriesManager;
     private final BacktestProperties backtestProperties;
     private final BrokerTokenModeService brokerTokenModeService;
@@ -71,19 +74,36 @@ public class IndicatorProcessorService {
         }
 
         if (isLive) {
-            List<String> symbols = liveMarketDataSource.getSymbols();
-            for (String symbol : symbols) {
-                try {
-                    List<Candle> candles = liveMarketDataSource.getCandles(symbol, ONE_MINUTE, DEFAULT_CANDLE_LIMIT);
-                    if (candles.isEmpty()) {
-                        continue;
+            String runId = "live-run-" + System.currentTimeMillis();
+            processingRunService.createRun(runId, "LIVE", null, null);
+            boolean failed = false;
+            try {
+                List<String> symbols = liveMarketDataSource.getSymbols();
+                for (String symbol : symbols) {
+                    try {
+                        List<Candle> candles = liveMarketDataSource.getCandles(symbol, ONE_MINUTE, DEFAULT_CANDLE_LIMIT);
+                        if (candles.isEmpty()) {
+                            continue;
+                        }
+                        processSymbol(symbol, candles, ProcessingMode.live());
+                    } catch (Exception e) {
+                        log.warn("Unable to process indicators for {}", symbol, e);
                     }
-                    processSymbol(symbol, candles, ProcessingMode.live());
-                } catch (Exception e) {
-                    log.warn("Unable to process indicators for {}", symbol, e);
                 }
+            } catch (Exception e) {
+                failed = true;
+                processingRunService.markFailed(runId);
+                log.warn("Live run failed for runId={}", runId, e);
+                return;
             }
-        } 
+            if (!failed) {
+                processingRunService.markCompleted(runId);
+            }
+        } else {
+            String runId = "scheduled-backtest-" + System.currentTimeMillis();
+            scheduleBacktestRun(runId, null, null);
+            log.info("Broker token mode set to backtest - scheduled backtest triggered with runId={}", runId);
+        }
     }
 
     /**
@@ -94,24 +114,43 @@ public class IndicatorProcessorService {
      * @return generated runId for the backtest
      */
     public String runScheduledBacktest() {
-        log.info("Broker token mode set to backtest - running scheduled backtest for available symbols");
-        List<String> symbols = candleRepository.findDistinctSymbols();
         String runId = "scheduled-backtest-" + System.currentTimeMillis();
+        scheduleBacktestRun(runId, null, null);
+        return runId;
+    }
+
+    @Async
+    public void scheduleBacktestRun(String runId, String startIso, String endIso) {
+        executeBacktestRun(runId, startIso, endIso);
+    }
+
+    private void executeBacktestRun(String runId, String startIso, String endIso) {
+        final Instant start;
+        final Instant end;
+        try {
+            start = (startIso != null && !startIso.isBlank()) ? Instant.parse(startIso) : null;
+            end = (endIso != null && !endIso.isBlank()) ? Instant.parse(endIso) : null;
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException("startDatetime or endDatetime must be valid ISO-8601 strings", e);
+        }
+
+        log.info("Broker token mode set to backtest - running scheduled backtest for available symbols start={} end={}", start, end);
+        List<String> symbols = candleRepository.findDistinctSymbols();
         for (String symbol : symbols) {
             try {
-                List<Candle> history = candleRepository.findBySymbolAndTimeframeOrderByCandleTimeDesc(symbol,
-                        ONE_MINUTE);
-                if (history == null || history.isEmpty()) {
+                LocalDateTime startLocal = (start != null) ? LocalDateTime.ofInstant(start, ZoneId.systemDefault()) : LocalDateTime.of(1970, 1, 1, 0, 0);
+                LocalDateTime endLocal = (end != null) ? LocalDateTime.ofInstant(end, ZoneId.systemDefault()) : LocalDateTime.of(3000, 1, 1, 0, 0);
+
+                List<Candle> ranged = candleRepository.findCandlesInTimeRange(symbol, ONE_MINUTE, startLocal, endLocal);
+                if (ranged == null || ranged.isEmpty()) {
                     continue;
                 }
-                // repository returns desc order, reverse to oldest-first
-                java.util.Collections.reverse(history);
-                runBacktest(symbol, history, runId);
+
+                runBacktest(symbol, ranged, runId);
             } catch (Exception e) {
                 log.warn("Unable to run scheduled backtest for {}", symbol, e);
             }
         }
-        return runId;
     }
 
     /**
@@ -124,40 +163,8 @@ public class IndicatorProcessorService {
      * @return generated runId for the backtest
      */
     public String runScheduledBacktest(String startIso, String endIso) {
-        final Instant start;
-        final Instant end;
-        try {
-            start = (startIso != null && !startIso.isBlank()) ? Instant.parse(startIso) : null;
-            end = (endIso != null && !endIso.isBlank()) ? Instant.parse(endIso) : null;
-        } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException("startDatetime or endDatetime must be valid ISO-8601 strings", e);
-        }
-
-        log.info("Broker token mode set to backtest - running scheduled backtest for available symbols start={} end={}", start, end);
-        List<String> symbols = candleRepository.findDistinctSymbols();
         String runId = "scheduled-backtest-" + System.currentTimeMillis();
-        for (String symbol : symbols) {
-            try {
-                List<Candle> history = candleRepository.findBySymbolAndTimeframeOrderByCandleTimeDesc(symbol,
-                        ONE_MINUTE);
-                if (history == null || history.isEmpty()) {
-                    continue;
-                }
-                // Use repository query to fetch only candles in the requested time window (inclusive).
-                LocalDateTime startLocal = (start != null) ? LocalDateTime.ofInstant(start, ZoneId.systemDefault()) : LocalDateTime.of(1970,1,1,0,0);
-                LocalDateTime endLocal = (end != null) ? LocalDateTime.ofInstant(end, ZoneId.systemDefault()) : LocalDateTime.of(3000,1,1,0,0);
-
-                List<Candle> ranged = candleRepository.findCandlesInTimeRange(symbol, ONE_MINUTE, startLocal, endLocal);
-                if (ranged == null || ranged.isEmpty()) {
-                    continue;
-                }
-
-                // repository returns ASC order (oldest-first), which is what runBacktest expects
-                runBacktest(symbol, ranged, runId);
-            } catch (Exception e) {
-                log.warn("Unable to run scheduled backtest for {}", symbol, e);
-            }
-        }
+        scheduleBacktestRun(runId, startIso, endIso);
         return runId;
     }
 
@@ -253,6 +260,7 @@ public class IndicatorProcessorService {
         IndicatorResultDto result = indicatorService.calculateIndicatorsBySeriesKey(symbol, ONE_MINUTE, seriesKey,
                 latestCandle.getSymbolToken(), latestCandle.getCandleTime(), closes);
         result.setRunId(mode.getRunId());
+        result.setOrigin(mode.isLive() ? "LIVE" : "BACKTEST");
 
         if (mode.isPersist()) {
             indicatorPersistenceService.save(result);
@@ -316,7 +324,7 @@ public class IndicatorProcessorService {
 
         if (mode.isPersist()) {
             patternPersistenceService.save(symbol, latestCandle.getSymbolToken(), ONE_MINUTE,
-                    mode.getRunId(), latestCandle.getCandleTime(), patternResult);
+                    mode.getRunId(), mode.isLive() ? "LIVE" : "BACKTEST", latestCandle.getCandleTime(), patternResult);
         }
 
         if (mode.isPublish()) {
@@ -324,7 +332,12 @@ public class IndicatorProcessorService {
                 String patternName = patternResult.isPatternDetected()
                         ? patternResult.getPattern().name()
                         : "NoPatternDetected";
-                kafkaProducerService.publishPattern(symbol, patternName);
+                kafkaProducerService.publishPattern(com.trade.market.dto.PatternMessage.builder()
+                        .symbol(symbol)
+                        .runId(mode.getRunId())
+                        .patternName(patternName)
+                        .origin(mode.isLive() ? "LIVE" : "BACKTEST")
+                        .build());
             } catch (Exception e) {
                 log.warn("Unable to publish pattern update for {}", symbol, e);
             }

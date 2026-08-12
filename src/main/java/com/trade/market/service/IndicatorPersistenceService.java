@@ -20,6 +20,7 @@ public class IndicatorPersistenceService {
                 .symbolToken(dto.getSymbolToken())
                 .timeframe(dto.getTimeframe())
                 .runId(dto.getRunId())
+                .origin(dto.getOrigin())
                 .trend_ema(dto.getEma())
                 .trend_ema20(dto.getEma20())
                 .trend_ema50(dto.getEma50())

@@ -24,6 +24,7 @@ public class MarketIndicator {
     private String symbolToken;
     private String timeframe;
     private String runId;
+    private String origin;
 
     @Column(name = "candle_time")
     private LocalDateTime candleTime;
