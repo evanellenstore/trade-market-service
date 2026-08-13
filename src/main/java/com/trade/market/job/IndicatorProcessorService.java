@@ -178,6 +178,42 @@ public class IndicatorProcessorService {
     }
 
     /**
+     * Schedule an asynchronous live run using the provided runId.
+     * startIso and endIso are accepted for API parity but currently not used for live runs.
+     */
+    @Async
+    public void scheduleLiveRun(String runId, String startIso, String endIso) {
+        executeLiveRun(runId, startIso, endIso);
+    }
+
+    private void executeLiveRun(String runId, String startIso, String endIso) {
+        boolean failed = false;
+        ProcessingMode mode = ProcessingMode.live(runId, true, true);
+        try {
+            List<String> symbols = liveMarketDataSource.getSymbols();
+            for (String symbol : symbols) {
+                try {
+                    List<Candle> candles = liveMarketDataSource.getCandles(symbol, ONE_MINUTE, DEFAULT_CANDLE_LIMIT);
+                    if (candles.isEmpty()) {
+                        continue;
+                    }
+                    processSymbol(symbol, candles, mode);
+                } catch (Exception e) {
+                    log.warn("Unable to process indicators for {}", symbol, e);
+                }
+            }
+        } catch (Exception e) {
+            failed = true;
+            processingRunService.markFailed(runId);
+            log.warn("Live scheduled run failed for runId={}", runId, e);
+            return;
+        }
+        if (!failed) {
+            processingRunService.markCompleted(runId);
+        }
+    }
+
+    /**
      * Executes a backtest for the given symbol over the provided candle history.
      *
      * @param symbol              the market symbol to backtest

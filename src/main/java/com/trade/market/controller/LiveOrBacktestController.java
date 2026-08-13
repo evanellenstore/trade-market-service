@@ -56,7 +56,7 @@ public class LiveOrBacktestController {
             String runId = "scheduled-live-" + timestamp;
             //String runId = "scheduled-live-" + System.currentTimeMillis();
             processingRunService.createRun(runId, "LIVE", convertToLocalDateTime(req == null ? null : req.getStartDatetime()), convertToLocalDateTime(req == null ? null : req.getEndDatetime()));
-            indicatorProcessorService.scheduleBacktestRun(runId, req == null ? null : req.getStartDatetime(), req == null ? null : req.getEndDatetime());
+            indicatorProcessorService.scheduleLiveRun(runId, req == null ? null : req.getStartDatetime(), req == null ? null : req.getEndDatetime());
             return ResponseEntity.ok(Collections.singletonMap("runId", runId));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Collections.singletonMap("error", e.getMessage()));
