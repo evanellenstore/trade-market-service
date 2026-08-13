@@ -22,8 +22,11 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.time.DayOfWeek;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.Comparator;
@@ -73,7 +76,14 @@ public class IndicatorProcessorService {
             isLive = true;
         }
 
-        if (isLive) {
+        LocalDate today = LocalDate.now();
+        DayOfWeek todayOfWeek = today.getDayOfWeek();
+        LocalTime currentTime = LocalTime.now();
+        boolean isWeekday = todayOfWeek != DayOfWeek.SATURDAY && todayOfWeek != DayOfWeek.SUNDAY;
+        boolean isMarketHours = !currentTime.isBefore(LocalTime.of(9, 15))
+                && !currentTime.isAfter(LocalTime.of(15, 30));
+
+        if (isLive && isWeekday && isMarketHours) {
             String runId = "live-run-" + System.currentTimeMillis();
             processingRunService.createRun(runId, "LIVE", null, null);
             boolean failed = false;
@@ -99,10 +109,9 @@ public class IndicatorProcessorService {
             if (!failed) {
                 processingRunService.markCompleted(runId);
             }
-        } else {
-            String runId = "scheduled-backtest-" + System.currentTimeMillis();
-            scheduleBacktestRun(runId, null, null);
-            log.info("Broker token mode set to backtest - scheduled backtest triggered with runId={}", runId);
+        }else{
+            
+            System.out.println("------------ Skipping live indicator processing: isLive=" + isLive + ", isWeekday=" + isWeekday + ", isMarketHours=" + isMarketHours);
         }
     }
 
