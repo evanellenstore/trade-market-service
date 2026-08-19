@@ -435,6 +435,7 @@ public class IndicatorService {
                 .symbol(symbol)
                 .symbolToken(symbolToken)
                 .timeframe(timeframe)
+            .price(latestClose)
                 .candleTime(candleTime)
                 // ========= TREND =========
                 .ema(latestEma.doubleValue())
@@ -495,6 +496,7 @@ public class IndicatorService {
                 .symbol(symbol)
                 .symbolToken(symbolToken)
                 .timeframe(timeframe)
+            .price(last)
                 .candleTime(candleTime)
                 // ========= TREND =========
                 .ema(last)

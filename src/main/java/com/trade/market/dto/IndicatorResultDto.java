@@ -14,6 +14,7 @@ public class IndicatorResultDto {
     private String symbol;
     private String symbolToken;
     private String timeframe;
+    private double price;
     private String runId;
     private String origin;
     private LocalDateTime candleTime;
