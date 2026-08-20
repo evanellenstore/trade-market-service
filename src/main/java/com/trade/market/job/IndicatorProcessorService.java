@@ -16,6 +16,7 @@ import com.trade.market.service.IndicatorPersistenceService;
 import com.trade.market.service.IndicatorService;
 import com.trade.market.service.PatternPersistenceService;
 import com.trade.market.service.ProcessingRunService;
+import com.trade.market.snapshot.service.MarketSnapshotService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -58,6 +59,7 @@ public class IndicatorProcessorService {
     private final BacktestProperties backtestProperties;
     private final BrokerTokenModeService brokerTokenModeService;
     private final CandleRepository candleRepository;
+    private final MarketSnapshotService marketSnapshotService;
 
     /**
      * Scheduled task that processes the latest indicators for live mode.
@@ -83,7 +85,8 @@ public class IndicatorProcessorService {
         boolean isMarketHours = !currentTime.isBefore(LocalTime.of(9, 15))
                 && !currentTime.isAfter(LocalTime.of(15, 30));
 
-        if (isLive && isWeekday && isMarketHours) {
+      //  if (isLive && isWeekday && isMarketHours) {
+      if (isLive ) {
             String runId = "live-run-" + System.currentTimeMillis();
             processingRunService.createRun(runId, "LIVE", null, null);
             boolean failed = false;
@@ -279,8 +282,9 @@ public class IndicatorProcessorService {
         String seriesKey = mode.isLive() ? symbol : symbol + "::" + mode.getRunId();
         Candle latestCandle = orderedCandles.get(orderedCandles.size() - 1);
 
-        processIndicator(symbol, closes, orderedCandles, mode, seriesKey, latestCandle);
-        processPattern(symbol, orderedCandles, mode, latestCandle);
+        IndicatorResultDto indicatorResult = processIndicator(symbol, closes, orderedCandles, mode, seriesKey, latestCandle);
+        PatternResult patternResult = processPattern(symbol, orderedCandles, mode, latestCandle);
+        marketSnapshotService.buildAndPublish(latestCandle, indicatorResult, patternResult, orderedCandles, mode.isPublish());
     }
 
     /**
@@ -292,7 +296,7 @@ public class IndicatorProcessorService {
      * @param seriesKey
      * @param latestCandle
      */
-    private void processIndicator(String symbol, List<Double> closes, List<Candle> orderedCandles,
+    private IndicatorResultDto processIndicator(String symbol, List<Double> closes, List<Candle> orderedCandles,
                                   ProcessingMode mode, String seriesKey, Candle latestCandle) {
         if (barSeriesManager.getSeriesByKey(seriesKey, ONE_MINUTE) == null) {
             for (Candle candle : orderedCandles) {
@@ -318,6 +322,7 @@ public class IndicatorProcessorService {
                 log.warn("Unable to publish indicator update for {}", symbol, e);
             }
         }
+        return result;
     }
 
     /**
@@ -328,7 +333,7 @@ public class IndicatorProcessorService {
      * @param mode
      * @param latestCandle
      */
-    private void processPattern(String symbol, List<Candle> orderedCandles, ProcessingMode mode,
+    private PatternResult processPattern(String symbol, List<Candle> orderedCandles, ProcessingMode mode,
                                 Candle latestCandle) {
         List<com.trade.market.pattern.Candle> domainCandles = orderedCandles.stream()
                 .map(ec -> {
@@ -391,5 +396,6 @@ public class IndicatorProcessorService {
         if (!patternResult.isPatternDetected()) {
             System.out.println("============= ********** No pattern detected for " + symbol);
         }
+        return patternResult;
     }
 }

@@ -10,6 +10,7 @@ import com.trade.market.repository.CandleRepository;
 import com.trade.market.service.IndicatorPersistenceService;
 import com.trade.market.service.IndicatorService;
 import com.trade.market.service.PatternPersistenceService;
+import com.trade.market.snapshot.service.MarketSnapshotService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -52,6 +53,8 @@ class IndicatorProcessorServiceTest {
     @Mock
     private PatternPersistenceService patternPersistenceService;
 
+        @Mock
+        private MarketSnapshotService marketSnapshotService;
     @Mock
     private BarSeriesManager barSeriesManager;
 
@@ -90,7 +93,6 @@ class IndicatorProcessorServiceTest {
         when(barSeriesManager.getSeriesByKey(symbol, "ONE_MINUTE")).thenReturn(null);
         when(indicatorService.calculateIndicatorsBySeriesKey(eq(symbol), eq("ONE_MINUTE"), eq(symbol), eq("BTC"), eq(newest.getCandleTime()), anyList()))
                 .thenAnswer(invocation -> {
-                    @SuppressWarnings("unchecked")
                     List<Double> closes = invocation.getArgument(5);
                     assertEquals(List.of(99.5, 100.5), closes);
                     return mock(IndicatorResultDto.class);
