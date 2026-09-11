@@ -68,6 +68,8 @@ public class MarketSnapshotBuilder {
 
     private String calculateSupertrendSignal(double price, double supertrend) {
         if (supertrend == 0) return "UNKNOWN";
-        return price >= supertrend ? "BUY" : "SELL";
+        if (price > supertrend) return "BUY";
+        if (price < supertrend) return "SELL";
+        return "HOLD";
     }
 }

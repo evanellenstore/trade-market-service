@@ -57,6 +57,19 @@ class MarketSnapshotBuilderTest {
         assertTrue(!snapshot.isVolumeSpike());
     }
 
+    @Test
+    void classifiesPriceEqualToSupertrendAsHold() {
+        Candle current = candle("VEDL-EQ", 100, 10);
+        IndicatorResultDto indicators = IndicatorResultDto.builder()
+                .ema20(100).ema50(100).ema200(100).adx(20).atr(0.5).rsi14(50)
+                .supertrend(100)
+                .build();
+
+        MarketSnapshot snapshot = builder.build(current, indicators, null, List.of(current));
+
+        assertEquals("HOLD", snapshot.getSupertrendSignal());
+    }
+
     private Candle candle(String symbol, double close, double volume) {
         return Candle.builder().symbol(symbol).close(close).volume(volume)
                 .candleTime(LocalDateTime.of(2026, 8, 20, 15, 30)).build();
