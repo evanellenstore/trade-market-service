@@ -14,6 +14,7 @@ import com.trade.market.repository.CandleRepository;
 import com.trade.market.service.BrokerTokenModeService;
 import com.trade.market.service.IndicatorPersistenceService;
 import com.trade.market.service.IndicatorService;
+import com.trade.market.service.MarketCacheService;
 import com.trade.market.service.PatternPersistenceService;
 import com.trade.market.service.ProcessingRunService;
 import com.trade.market.snapshot.service.MarketSnapshotService;
@@ -24,6 +25,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -60,6 +62,7 @@ public class IndicatorProcessorService {
     private final BrokerTokenModeService brokerTokenModeService;
     private final CandleRepository candleRepository;
     private final MarketSnapshotService marketSnapshotService;
+    private final MarketCacheService marketCacheService;
 
     /**
      * Scheduled task that processes the latest indicators for live mode.
@@ -91,7 +94,8 @@ public class IndicatorProcessorService {
             processingRunService.createRun(runId, "LIVE", null, null);
             boolean failed = false;
             try {
-                List<String> symbols = liveMarketDataSource.getSymbols();
+                List<String> symbols = marketCacheService.getRecentlyUpdatedSymbols(Duration.ofMinutes(2));
+                log.debug("Processing live indicators for {} recently updated subscribed symbols", symbols.size());
                 for (String symbol : symbols) {
                     try {
                         List<Candle> candles = liveMarketDataSource.getCandles(symbol, ONE_MINUTE, DEFAULT_CANDLE_LIMIT);
@@ -193,7 +197,7 @@ public class IndicatorProcessorService {
         boolean failed = false;
         ProcessingMode mode = ProcessingMode.live(runId, true, true);
         try {
-            List<String> symbols = liveMarketDataSource.getSymbols();
+            List<String> symbols = marketCacheService.getRecentlyUpdatedSymbols(Duration.ofMinutes(2));
             for (String symbol : symbols) {
                 try {
                     List<Candle> candles = liveMarketDataSource.getCandles(symbol, ONE_MINUTE, DEFAULT_CANDLE_LIMIT);
@@ -310,6 +314,8 @@ public class IndicatorProcessorService {
                 latestCandle.getSymbolToken(), latestCandle.getCandleTime(), closes);
         result.setRunId(mode.getRunId());
         result.setOrigin(mode.isLive() ? "LIVE" : "BACKTEST");
+        result.setSubscriptionId(latestCandle.getSubscriptionId());
+        result.setSubscriptionName(latestCandle.getSubscriptionName());
 
         if (mode.isPersist()) {
             indicatorPersistenceService.save(result);
@@ -384,6 +390,8 @@ public class IndicatorProcessorService {
                         : "NoPatternDetected";
                 kafkaProducerService.publishPattern(com.trade.market.dto.PatternMessage.builder()
                         .symbol(symbol)
+                        .subscriptionId(latestCandle.getSubscriptionId())
+                        .subscriptionName(latestCandle.getSubscriptionName())
                         .runId(mode.getRunId())
                         .patternName(patternName)
                         .origin(mode.isLive() ? "LIVE" : "BACKTEST")

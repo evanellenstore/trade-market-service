@@ -13,6 +13,8 @@ import java.time.LocalDateTime;
 public class IndicatorResultDto {
     private String symbol;
     private String symbolToken;
+    private String subscriptionId;
+    private String subscriptionName;
     private String timeframe;
     private double price;
     private String runId;

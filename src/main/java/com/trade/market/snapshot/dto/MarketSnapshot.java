@@ -15,6 +15,8 @@ import java.time.LocalDateTime;
 public class MarketSnapshot {
     private String symbol;
     private String symbolToken;
+    private String subscriptionId;
+    private String subscriptionName;
     private String exchange;
     private String timeframe;
     private double price;

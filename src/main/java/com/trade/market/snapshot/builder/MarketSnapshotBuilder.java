@@ -30,6 +30,8 @@ public class MarketSnapshotBuilder {
                 .symbol(candle.getSymbol())
                 .symbolToken(candle.getSymbolToken())
                 .exchange(candle.getExchange())
+                .subscriptionId(candle.getSubscriptionId())
+                .subscriptionName(candle.getSubscriptionName())
                 .timeframe(candle.getTimeframe())
                 .price(candle.getClose())
                 .trend(trend)

@@ -48,9 +48,10 @@ public class CandleBuilderServiceImpl implements CandleBuilderService {
             current = createNewCandle(tick);
             activeCandles.put(symbol, current);
         } else {
-            current.setHigh(Math.max(current.getHigh(), tick.getHigh()));
-            current.setLow(Math.min(current.getLow(), tick.getLow()));
-            current.setClose(tick.getClose());
+            double tradedPrice = tick.getLtp() > 0 ? tick.getLtp() : tick.getClose();
+            current.setHigh(Math.max(current.getHigh(), tradedPrice));
+            current.setLow(Math.min(current.getLow(), tradedPrice));
+            current.setClose(tradedPrice);
             current.setVolume(current.getVolume() + tick.getVolume());
             current.setLtp(tick.getLtp());
         }
@@ -82,18 +83,21 @@ public class CandleBuilderServiceImpl implements CandleBuilderService {
 
     private Candle createNewCandle(TickDto tick) {
         LocalDateTime startTime = tick.getTimestamp().withSecond(0).withNano(0);
+        double tradedPrice = tick.getLtp() > 0 ? tick.getLtp() : tick.getClose();
 
         return Candle.builder()
                 .symbol(tick.getSymbol())
                 .symbolToken(tick.getToken())
                 .exchange(tick.getExchange())
+                .subscriptionId(tick.getSubscriptionId())
+                .subscriptionName(tick.getSubscriptionName())
                 .timeframe("ONE_MINUTE")
                 .candleTime(startTime)
                 .endTime(startTime.plusMinutes(1))
-                .open(tick.getOpen())
-                .high(tick.getHigh())
-                .low(tick.getLow())
-                .close(tick.getClose())
+                .open(tradedPrice)
+                .high(tradedPrice)
+                .low(tradedPrice)
+                .close(tradedPrice)
                 .volume(tick.getVolume())
                 .ltp(tick.getLtp())
                 .build();

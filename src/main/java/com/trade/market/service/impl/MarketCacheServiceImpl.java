@@ -5,6 +5,8 @@ import com.trade.market.dto.TickDto;
 import com.trade.market.service.MarketCacheService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import java.time.Duration;
+import java.util.List;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -23,6 +25,11 @@ public class MarketCacheServiceImpl implements MarketCacheService {
     public double getLatestPrice(String symbol) {
         Double price = marketCache.getLatestPrice(symbol);
         return price != null ? price : 0.0;
+    }
+
+    @Override
+    public List<String> getRecentlyUpdatedSymbols(Duration maxAge) {
+        return marketCache.getRecentlyUpdatedSymbols(maxAge);
     }
     
     @Override

@@ -21,6 +21,8 @@ public class Candle {
     private String symbol;
     private String symbolToken;
     private String exchange;
+    private String subscriptionId;
+    private String subscriptionName;
     private String timeframe;
     @Column(name = "candle_time")
     private LocalDateTime candleTime;

@@ -40,7 +40,7 @@ public class MarketController {
         var candles = candleService.getCandles(symbol, timeframe, limit);
         return ResponseEntity.ok(ApiResponse.success(candles, "Candles retrieved"));
     }
-    
+
     @GetMapping("/indicator")
     public ResponseEntity<ApiResponse<Object>> getIndicators(
             @RequestParam String symbol,

@@ -136,6 +136,8 @@ public class CandleAggregatorServiceImpl implements CandleAggregatorService {
                 .symbol(symbol)
                 .symbolToken(lastCandle.getSymbolToken())
                 .exchange(lastCandle.getExchange())
+                .subscriptionId(lastCandle.getSubscriptionId())
+                .subscriptionName(lastCandle.getSubscriptionName())
                 .timeframe(timeframe)
                 .candleTime(startTime)
                 .endTime(endTime)

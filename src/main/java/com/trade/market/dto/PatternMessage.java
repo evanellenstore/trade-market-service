@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class PatternMessage {
     private String symbol;
+    private String subscriptionId;
+    private String subscriptionName;
     private String runId;
     private String patternName;
     private String origin;

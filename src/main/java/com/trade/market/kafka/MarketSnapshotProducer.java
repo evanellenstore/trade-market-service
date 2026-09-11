@@ -1,4 +1,4 @@
-package com.trade.market.snapshot.producer;
+package com.trade.market.kafka;
 
 import com.trade.market.snapshot.dto.MarketSnapshot;
 import lombok.RequiredArgsConstructor;

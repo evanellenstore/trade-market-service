@@ -431,7 +431,7 @@ public class IndicatorService {
         // the original code used latestEma20 here, which is a different value entirely.
         double percentB = bbWidth != 0.0 ? (latestClose - latestBbLower.doubleValue()) / bbWidth : 0.0;
 
-        return IndicatorResultDto.builder()
+        IndicatorResultDto result = IndicatorResultDto.builder()
                 .symbol(symbol)
                 .symbolToken(symbolToken)
                 .timeframe(timeframe)
@@ -475,6 +475,48 @@ public class IndicatorService {
                 .resistance1(resistance1)
                 .resistance2(resistance2)
                 .build();
+        normalizeNonFiniteValues(result);
+        return result;
+    }
+
+    private void normalizeNonFiniteValues(IndicatorResultDto result) {
+        result.setPrice(finite(result.getPrice()));
+        result.setEma(finite(result.getEma()));
+        result.setEma20(finite(result.getEma20()));
+        result.setEma50(finite(result.getEma50()));
+        result.setEma100(finite(result.getEma100()));
+        result.setEma200(finite(result.getEma200()));
+        result.setAdx(finite(result.getAdx()));
+        result.setPlusDi(finite(result.getPlusDi()));
+        result.setMinusDi(finite(result.getMinusDi()));
+        result.setSupertrend(finite(result.getSupertrend()));
+        result.setRsi14(finite(result.getRsi14()));
+        result.setMacd(finite(result.getMacd()));
+        result.setMacdSignal(finite(result.getMacdSignal()));
+        result.setMacdHistogram(finite(result.getMacdHistogram()));
+        result.setStochasticK(finite(result.getStochasticK()));
+        result.setStochasticD(finite(result.getStochasticD()));
+        result.setCci(finite(result.getCci()));
+        result.setRoc(finite(result.getRoc()));
+        result.setVwap(finite(result.getVwap()));
+        result.setObv(finite(result.getObv()));
+        result.setMfi(finite(result.getMfi()));
+        result.setCmf(finite(result.getCmf()));
+        result.setAtr(finite(result.getAtr()));
+        result.setBbUpper(finite(result.getBbUpper()));
+        result.setBbMiddle(finite(result.getBbMiddle()));
+        result.setBbLower(finite(result.getBbLower()));
+        result.setBbWidth(finite(result.getBbWidth()));
+        result.setPercentB(finite(result.getPercentB()));
+        result.setPivot(finite(result.getPivot()));
+        result.setSupport1(finite(result.getSupport1()));
+        result.setSupport2(finite(result.getSupport2()));
+        result.setResistance1(finite(result.getResistance1()));
+        result.setResistance2(finite(result.getResistance2()));
+    }
+
+    private double finite(double value) {
+        return Double.isFinite(value) ? value : 0.0;
     }
 
     /**

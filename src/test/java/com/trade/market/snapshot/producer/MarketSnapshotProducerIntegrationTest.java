@@ -1,5 +1,6 @@
 package com.trade.market.snapshot.producer;
 
+import com.trade.market.kafka.MarketSnapshotProducer;
 import com.trade.market.snapshot.dto.MarketSnapshot;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;

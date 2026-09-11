@@ -14,6 +14,8 @@ public class TickDto implements Serializable {
     private String exchange;
     private String token;
     private String symbol;
+    private String subscriptionId;
+    private String subscriptionName;
     private double ltp;
     private double open;
     private double high;

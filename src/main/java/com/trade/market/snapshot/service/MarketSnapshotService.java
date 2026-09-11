@@ -2,10 +2,11 @@ package com.trade.market.snapshot.service;
 
 import com.trade.market.dto.IndicatorResultDto;
 import com.trade.market.entity.Candle;
+import com.trade.market.kafka.MarketSnapshotProducer;
 import com.trade.market.pattern.PatternResult;
 import com.trade.market.snapshot.builder.MarketSnapshotBuilder;
 import com.trade.market.snapshot.dto.MarketSnapshot;
-import com.trade.market.snapshot.producer.MarketSnapshotProducer;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
