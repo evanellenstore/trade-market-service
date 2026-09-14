@@ -8,11 +8,13 @@ public final class TrendCalculator {
 
     public static String calculate(IndicatorResultDto indicators) {
         if (indicators.getEma20() > indicators.getEma50()
-                && indicators.getEma50() > indicators.getEma200()) {
+            && indicators.getEma50() > indicators.getEma100()
+            && indicators.getEma100() > indicators.getEma200()) {
             return "BULLISH";
         }
         if (indicators.getEma20() < indicators.getEma50()
-                && indicators.getEma50() < indicators.getEma200()) {
+            && indicators.getEma50() < indicators.getEma100()
+            && indicators.getEma100() < indicators.getEma200()) {
             return "BEARISH";
         }
         return "SIDEWAYS";

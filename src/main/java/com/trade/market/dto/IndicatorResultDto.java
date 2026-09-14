@@ -36,6 +36,8 @@ public class IndicatorResultDto {
     private double rsi14;
     private double macd;
     private double macdSignal;
+    private Double macdPrevious;
+    private Double macdSignalPrevious;
     private double macdHistogram;
     private double stochasticK;
     private double stochasticD;

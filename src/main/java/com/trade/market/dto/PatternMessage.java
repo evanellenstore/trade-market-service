@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class PatternMessage {
     private String symbol;
+    private String timeframe;
+    private java.time.LocalDateTime candleTime;
     private String subscriptionId;
     private String subscriptionName;
     private String runId;

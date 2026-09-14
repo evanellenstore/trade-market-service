@@ -381,6 +381,8 @@ public class IndicatorService {
         Num latestRsi14 = rsi14.getValue(idx);
         Num latestMacd = macd.getValue(idx);
         Num latestSignal = macdSignal.getValue(idx);
+        Num previousMacd = idx > 0 ? macd.getValue(idx - 1) : null;
+        Num previousSignal = idx > 0 ? macdSignal.getValue(idx - 1) : null;
         Num latestHist = macdHist.getValue(idx);
         Num latestCci = cci.getValue(idx);
         Num latestRoc = roc.getValue(idx);
@@ -451,6 +453,8 @@ public class IndicatorService {
                 .rsi14(latestRsi14.doubleValue())
                 .macd(latestMacd.doubleValue())
                 .macdSignal(latestSignal.doubleValue())
+                .macdPrevious(previousMacd == null ? null : previousMacd.doubleValue())
+                .macdSignalPrevious(previousSignal == null ? null : previousSignal.doubleValue())
                 .macdHistogram(latestHist.doubleValue())
                 .stochasticK(latestStochK.doubleValue())
                 .stochasticD(latestStochD.doubleValue())

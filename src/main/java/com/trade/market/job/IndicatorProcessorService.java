@@ -390,6 +390,8 @@ public class IndicatorProcessorService {
                         : "NoPatternDetected";
                 kafkaProducerService.publishPattern(com.trade.market.dto.PatternMessage.builder()
                         .symbol(symbol)
+                        .timeframe(ONE_MINUTE)
+                        .candleTime(latestCandle.getCandleTime())
                         .subscriptionId(latestCandle.getSubscriptionId())
                         .subscriptionName(latestCandle.getSubscriptionName())
                         .runId(mode.getRunId())
