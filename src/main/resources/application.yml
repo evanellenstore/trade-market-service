@@ -60,6 +60,7 @@ market:
 
   scheduler:
     indicator-delay-ms: 60000
+    candle-flush-delay-ms: 1000
 
   backtest:
     publish: true

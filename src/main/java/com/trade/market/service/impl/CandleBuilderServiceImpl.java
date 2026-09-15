@@ -10,6 +10,7 @@ import com.trade.market.service.CandleAggregatorService;
 import com.trade.market.service.CandleBuilderService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -30,7 +31,7 @@ public class CandleBuilderServiceImpl implements CandleBuilderService {
     private final Map<String, Candle> activeCandles = new ConcurrentHashMap<>();
 
     @Override
-    public void processTick(TickDto tick) {
+    public synchronized void processTick(TickDto tick) {
         if (tick == null ) {
             return;
         }
@@ -58,6 +59,18 @@ public class CandleBuilderServiceImpl implements CandleBuilderService {
 
         marketCache.updateLatestPrice(symbol, tick.getLtp());
         marketCache.updateCurrentCandle(symbol, "ONE_MINUTE", current);
+    }
+
+    @Scheduled(fixedDelayString = "${market.scheduler.candle-flush-delay-ms:1000}")
+    public synchronized void flushCompletedCandles() {
+        LocalDateTime now = LocalDateTime.now();
+
+        for (Map.Entry<String, Candle> entry : activeCandles.entrySet()) {
+            Candle candle = entry.getValue();
+            if (!candle.getEndTime().isAfter(now) && activeCandles.remove(entry.getKey(), candle)) {
+                finalizeCandle(candle);
+            }
+        }
     }
     
     /**
@@ -109,23 +122,27 @@ public class CandleBuilderServiceImpl implements CandleBuilderService {
      */
 
     private void finalizeCandle(Candle candle) {
+        Candle saved;
         try {
-            Candle saved = candleRepository.save(candle);
+            saved = candleRepository.save(candle);
             log.debug("Finalized candle: {} at {}", saved.getSymbol(), saved.getStartTime());
+        } catch (Exception e) {
+            log.error("Error saving finalized candle", e);
+            return;
+        }
 
-            // Update market cache with the finalized candle
+        try {
             marketCache.updateCurrentCandle(saved.getSymbol(), saved.getTimeframe(), saved);
-           
-           // Update BarSeriesManager with the finalized candle
             barSeriesManager.addCandle(saved.getSymbol(), saved.getTimeframe(), saved);
-            
-            // Aggregate finalized candle for higher timeframes
             candleAggregatorService.aggregateCandles(saved.getSymbol(), saved);
+        } catch (Exception e) {
+            log.error("Error updating candle-derived data for {}", saved.getSymbol(), e);
+        }
 
-            // Publish finalized candle to Kafka
+        try {
             kafkaProducerService.publishCandle(saved);
         } catch (Exception e) {
-            log.error("Error finalizing candle", e);
+            log.error("Error publishing candle for {}", saved.getSymbol(), e);
         }
     }
 }
