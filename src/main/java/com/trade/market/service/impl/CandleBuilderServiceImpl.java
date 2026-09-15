@@ -83,7 +83,7 @@ public class CandleBuilderServiceImpl implements CandleBuilderService {
 
     private Candle createNewCandle(TickDto tick) {
         LocalDateTime startTime = tick.getTimestamp().withSecond(0).withNano(0);
-        double tradedPrice = tick.getLtp() > 0 ? tick.getLtp() : tick.getClose();
+   
 
         return Candle.builder()
                 .symbol(tick.getSymbol())
@@ -94,10 +94,10 @@ public class CandleBuilderServiceImpl implements CandleBuilderService {
                 .timeframe("ONE_MINUTE")
                 .candleTime(startTime)
                 .endTime(startTime.plusMinutes(1))
-                .open(tradedPrice)
-                .high(tradedPrice)
-                .low(tradedPrice)
-                .close(tradedPrice)
+                .open(tick.getOpen())
+                .high(tick.getHigh())
+                .low(tick.getLow())
+                .close(tick.getClose())
                 .volume(tick.getVolume())
                 .ltp(tick.getLtp())
                 .build();
