@@ -17,6 +17,8 @@ import org.springframework.stereotype.Component;
 /** Builds an immutable-in-use snapshot from the market enrichment results. */
 @Component
 public class MarketSnapshotBuilder {
+    private static final int CANDLE_HISTORY_SIZE = 20;
+
     public MarketSnapshot build(Candle candle, IndicatorResultDto indicators,
                                  PatternResult pattern, List<Candle> orderedCandles) {
         Objects.requireNonNull(candle, "candle must not be null");
@@ -57,7 +59,16 @@ public class MarketSnapshotBuilder {
                 .snapshotTime(candle.getCandleTime())
                 .runId(indicators.getRunId())
                 .origin(indicators.getOrigin())
+                .candles(latestCandles(orderedCandles))
                 .build();
+    }
+
+    private List<Candle> latestCandles(List<Candle> candles) {
+        if (candles == null || candles.isEmpty()) {
+            return List.of();
+        }
+        int fromIndex = Math.max(0, candles.size() - CANDLE_HISTORY_SIZE);
+        return List.copyOf(candles.subList(fromIndex, candles.size()));
     }
 
     private String calculateTrendStrength(double adx) {

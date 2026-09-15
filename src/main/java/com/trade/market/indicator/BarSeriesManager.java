@@ -25,49 +25,7 @@ public class BarSeriesManager {
     private final Map<String, BarSeries> seriesByKey = new ConcurrentHashMap<>();
     private final Map<String, ReentrantLock> locks = new ConcurrentHashMap<>();
 
-    /* 
-    public void addCandle(String symbol, String timeframe, Candle candle) {
-        String key = buildKey(symbol, timeframe);
-        ReentrantLock lock = locks.computeIfAbsent(key, k -> new ReentrantLock());
-        lock.lock();
-        try {
-            BarSeries series = getOrCreateSeries(symbol, timeframe);
-            if (series.getBarCount() > 0) {
-                BaseBar last = (BaseBar) series.getBar(series.getBarCount() - 1);
-                ZonedDateTime candleEndTime = candle.getStartTime().atZone(ZoneId.of("UTC")).plus(Duration.ofMinutes(1));
-                // skip if candle end is not strictly after the series last end (prevents <= error)
-                if (!candleEndTime.isAfter(last.getEndTime())) {
-                    log.debug("Skipping candle with endTime {} because series endTime is {}", candleEndTime, last.getEndTime());
-                    return;
-                }
-            }
-
-            ZonedDateTime beginTime = candle.getStartTime().atZone(ZoneId.of("UTC"));
-            BaseBar bar = new BaseBar(
-                    Duration.ofMinutes(1),
-                    beginTime,
-                DecimalNum.valueOf(candle.getOpen()),
-                DecimalNum.valueOf(candle.getHigh()),
-                DecimalNum.valueOf(candle.getLow()),
-                DecimalNum.valueOf(candle.getClose()),
-                DecimalNum.valueOf(candle.getVolume()),
-                DecimalNum.valueOf(candle.getVolume()),
-                    1L
-            );
-            try {
-                series.addBar(bar);
-                log.debug("Added candle to TA4J series {}:{}", symbol, timeframe);
-            } catch (IllegalArgumentException e) {
-                // TA4J will throw when attempting to add a bar with endTime <= series endTime.
-                // This can happen under races or when the scheduled job attempts to re-add the newest candle.
-                log.debug("Ignored TA4J addBar error for {}:{} end={} ",
-                    symbol, timeframe, bar.getEndTime(), e);
-            }
-        } finally {
-            lock.unlock();
-        }
-    }*/
-
+    
  
 
     public void addCandle(String symbol, String timeframe, Candle candle) {

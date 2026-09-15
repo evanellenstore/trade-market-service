@@ -49,6 +49,7 @@ public class IndicatorProcessorService {
 
     private static final String ONE_MINUTE = "ONE_MINUTE";
     private static final int DEFAULT_CANDLE_LIMIT = 500;
+    private static final int CANDLE_HISTORY_SIZE = 20;
 
     private final LiveMarketDataSource liveMarketDataSource;
     private final IndicatorService indicatorService;
@@ -286,8 +287,13 @@ public class IndicatorProcessorService {
         String seriesKey = mode.isLive() ? symbol : symbol + "::" + mode.getRunId();
         Candle latestCandle = orderedCandles.get(orderedCandles.size() - 1);
 
+        // Process indicators and patterns, then build and publish the market snapshot
         IndicatorResultDto indicatorResult = processIndicator(symbol, closes, orderedCandles, mode, seriesKey, latestCandle);
+
+        // Process pattern detection and build/publish the market snapshot
         PatternResult patternResult = processPattern(symbol, orderedCandles, mode, latestCandle);
+
+        // Build and publish the market snapshot with the latest candle, indicator results, pattern results, and ordered candles
         marketSnapshotService.buildAndPublish(latestCandle, indicatorResult, patternResult, orderedCandles, mode.isPublish());
     }
 
@@ -316,6 +322,7 @@ public class IndicatorProcessorService {
         result.setOrigin(mode.isLive() ? "LIVE" : "BACKTEST");
         result.setSubscriptionId(latestCandle.getSubscriptionId());
         result.setSubscriptionName(latestCandle.getSubscriptionName());
+        result.setCandles(latestCandles(orderedCandles));
 
         if (mode.isPersist()) {
             indicatorPersistenceService.save(result);
@@ -397,6 +404,7 @@ public class IndicatorProcessorService {
                         .runId(mode.getRunId())
                         .patternName(patternName)
                         .origin(mode.isLive() ? "LIVE" : "BACKTEST")
+                        .candles(latestCandles(orderedCandles))
                         .build());
             } catch (Exception e) {
                 log.warn("Unable to publish pattern update for {}", symbol, e);
@@ -407,5 +415,10 @@ public class IndicatorProcessorService {
             System.out.println("============= ********** No pattern detected for " + symbol);
         }
         return patternResult;
+    }
+
+    private List<Candle> latestCandles(List<Candle> candles) {
+        int fromIndex = Math.max(0, candles.size() - CANDLE_HISTORY_SIZE);
+        return List.copyOf(candles.subList(fromIndex, candles.size()));
     }
 }

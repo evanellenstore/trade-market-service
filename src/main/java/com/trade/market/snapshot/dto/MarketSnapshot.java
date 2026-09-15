@@ -6,6 +6,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import com.trade.market.entity.Candle;
 
 /** Consolidated market context published after a candle is enriched. */
 @Data
@@ -43,4 +45,5 @@ public class MarketSnapshot {
     private LocalDateTime snapshotTime;
     private String runId;
     private String origin;
+    private List<Candle> candles;
 }

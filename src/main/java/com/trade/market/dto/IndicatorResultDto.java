@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
+import java.util.List;
+import com.trade.market.entity.Candle;
 
 @Data
 @Builder
@@ -20,6 +22,7 @@ public class IndicatorResultDto {
     private String runId;
     private String origin;
     private LocalDateTime candleTime;
+    private List<Candle> candles;
     //========= TREND =========
     private double ema;
     private double ema20;

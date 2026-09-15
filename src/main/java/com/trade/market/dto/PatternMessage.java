@@ -1,5 +1,8 @@
 package com.trade.market.dto;
 
+import com.trade.market.entity.Candle;
+import java.util.List;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,4 +21,5 @@ public class PatternMessage {
     private String runId;
     private String patternName;
     private String origin;
+    private List<Candle> candles;
 }
