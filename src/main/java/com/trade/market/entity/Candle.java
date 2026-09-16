@@ -4,10 +4,26 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
 
-@Entity
-@Table(name = "market_candles", indexes = {
-    @Index(name = "idx_market_candles_symbol_token_timeframe_candle_time", columnList = "symbolToken, timeframe, candle_time")
-})
+@Table(
+    name = "market_candles",
+    indexes = {
+        @Index(
+            name = "idx_market_candles_symbol_token_timeframe_candle_time",
+            columnList = "symbolToken,timeframe,candle_time"
+        )
+    },
+    uniqueConstraints = {
+        @UniqueConstraint(
+            name = "uk_market_candles_symbol_timeframe_time",
+            columnNames = {
+                "symbolToken",
+                "timeframe",
+                "candle_time"
+            }
+        )
+    }
+)
+
 @Getter
 @Setter
 @Builder

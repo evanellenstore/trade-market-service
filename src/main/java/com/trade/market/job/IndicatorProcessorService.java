@@ -277,18 +277,17 @@ public class IndicatorProcessorService {
             return;
         }
 
-        List<Candle> orderedCandles = candles.stream()
-                .sorted(Comparator.comparing(Candle::getCandleTime))
-                .collect(Collectors.toList());
-        List<Double> closes = orderedCandles.stream()
-                .map(Candle::getClose)
-                .collect(Collectors.toList());
+        List<Candle> orderedCandles = candles.stream().sorted(Comparator.comparing(Candle::getCandleTime)).collect(Collectors.toList());
+        List<Double> closes = orderedCandles.stream().map(Candle::getClose).collect(Collectors.toList());
 
         String seriesKey = mode.isLive() ? symbol : symbol + "::" + mode.getRunId();
         Candle latestCandle = orderedCandles.get(orderedCandles.size() - 1);
 
         // Process indicators and patterns, then build and publish the market snapshot
         IndicatorResultDto indicatorResult = processIndicator(symbol, closes, orderedCandles, mode, seriesKey, latestCandle);
+
+
+
 
         // Process pattern detection and build/publish the market snapshot
         PatternResult patternResult = processPattern(symbol, orderedCandles, mode, latestCandle);
@@ -306,8 +305,8 @@ public class IndicatorProcessorService {
      * @param seriesKey
      * @param latestCandle
      */
-    private IndicatorResultDto processIndicator(String symbol, List<Double> closes, List<Candle> orderedCandles,
-                                  ProcessingMode mode, String seriesKey, Candle latestCandle) {
+    private IndicatorResultDto processIndicator(String symbol, List<Double> closes, List<Candle> orderedCandles,ProcessingMode mode, String seriesKey, Candle latestCandle) {
+       
         if (barSeriesManager.getSeriesByKey(seriesKey, ONE_MINUTE) == null) {
             for (Candle candle : orderedCandles) {
                 barSeriesManager.addCandleByKey(seriesKey, ONE_MINUTE, candle);
@@ -316,13 +315,26 @@ public class IndicatorProcessorService {
             barSeriesManager.addCandleByKey(seriesKey, ONE_MINUTE, latestCandle);
         }
 
-        IndicatorResultDto result = indicatorService.calculateIndicatorsBySeriesKey(symbol, ONE_MINUTE, seriesKey,
-                latestCandle.getSymbolToken(), latestCandle.getCandleTime(), closes);
+
+        System.out.println("============= ********** BarSeries for " + seriesKey + " after adding latest candle: " + latestCandle);
+
+        barSeriesManager.getSeriesByKey(seriesKey, ONE_MINUTE).getBarData().forEach(bar -> {
+            System.out.println("Bar: endTime=" + bar.getEndTime() + " open=" + bar.getOpenPrice() + " high="
+                    + bar.getHighPrice() + " low=" + bar.getLowPrice() + " close=" + bar.getClosePrice() + " volume="
+                    + bar.getVolume());
+        });
+
+        System.out.println("============= ********** End of BarSeries for " + seriesKey);
+
+
+        IndicatorResultDto result = indicatorService.calculateIndicatorsBySeriesKey(symbol, ONE_MINUTE, seriesKey,latestCandle.getSymbolToken(), latestCandle.getCandleTime(), closes);
         result.setRunId(mode.getRunId());
         result.setOrigin(mode.isLive() ? "LIVE" : "BACKTEST");
         result.setSubscriptionId(latestCandle.getSubscriptionId());
         result.setSubscriptionName(latestCandle.getSubscriptionName());
         result.setCandles(latestCandles(orderedCandles));
+
+        System.out.println("============= ********** IndicatorResultDto for " + symbol + ": " + result);
 
         if (mode.isPersist()) {
             indicatorPersistenceService.save(result);
