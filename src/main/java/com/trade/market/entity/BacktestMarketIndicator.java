@@ -7,6 +7,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.Index;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -15,7 +17,15 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "market_indicators_backtest")
+@Table(name = "market_indicators_backtest", indexes = {
+    @Index(name = "idx_backtest_indicators_symbol_token_timeframe_candle_time",
+        columnList = "symbolToken,timeframe,candle_time"),
+    @Index(name = "idx_backtest_indicators_symbol_token_timeframe_origin_created_at",
+        columnList = "symbolToken,timeframe,origin,created_at")
+}, uniqueConstraints = {
+    @UniqueConstraint(name = "uk_backtest_indicators_symbol_token_timeframe_candle",
+        columnNames = {"symbolToken", "timeframe", "candle_time"})
+})
 @Getter
 @Builder
 @NoArgsConstructor

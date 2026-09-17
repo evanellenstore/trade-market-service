@@ -1,6 +1,7 @@
 package com.trade.market.service;
 
 import com.trade.market.dto.IndicatorBackfillRequest;
+import com.trade.market.dto.IndicatorBackfillStatusDto;
 import com.trade.market.dto.IndicatorResultDto;
 import com.trade.market.entity.BacktestCandle;
 import com.trade.market.entity.BacktestMarketIndicator;
@@ -42,6 +43,13 @@ public class IndicatorBackfillService {
         return runId;
     }
 
+    public List<IndicatorBackfillStatusDto> getStatus(List<String> symbolTokens, String timeframe) {
+        if (symbolTokens == null || symbolTokens.isEmpty() || timeframe == null || timeframe.isBlank()) {
+            return List.of();
+        }
+        return backtestIndicatorRepository.findBackfillStatus(symbolTokens, timeframe);
+    }
+
     @Async
     public void backfillAllAsync(String runId) {
         for (String symbol : backtestCandleRepository.findDistinctSymbols()) {
@@ -71,8 +79,8 @@ public class IndicatorBackfillService {
             barSeriesManager.addCandleByKey(seriesKey, timeframe, candle);
             IndicatorResultDto result = indicatorService.calculateIndicatorsBySeriesKey(
                     symbol, timeframe, seriesKey, candle.getSymbolToken(), candle.getCandleTime(), closes);
-            if (!backtestIndicatorRepository.existsBySymbolAndTimeframeAndCandleTimeAndRunId(
-                    symbol, timeframe, candle.getCandleTime(), runId)) {
+                if (!backtestIndicatorRepository.existsBySymbolTokenAndTimeframeAndCandleTime(
+                    candle.getSymbolToken(), timeframe, candle.getCandleTime())) {
                 backtestIndicatorRepository.save(toBacktestIndicator(result, runId));
             }
         }
