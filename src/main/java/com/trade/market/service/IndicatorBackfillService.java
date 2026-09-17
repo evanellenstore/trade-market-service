@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -33,7 +34,7 @@ public class IndicatorBackfillService {
             throw new IllegalArgumentException("Only BACKTEST indicator backfill is supported");
         }
         String runId = "indicator-backfill-" + UUID.randomUUID();
-        backfillAsync(request.getSymbol(), request.getTimeframe(), runId);
+        backfillAsync(request.getSymbolTokens(), request.getTimeframe(), runId);
         return runId;
     }
 
@@ -52,26 +53,30 @@ public class IndicatorBackfillService {
 
     @Async
     public void backfillAllAsync(String runId) {
-        for (String symbol : backtestCandleRepository.findDistinctSymbols()) {
-            for (String timeframe : backtestCandleRepository.findDistinctTimeframes(symbol)) {
-                backfill(symbol, timeframe, runId);
+        for (String symbolToken : backtestCandleRepository.findDistinctSymbolTokens()) {
+            for (String timeframe : backtestCandleRepository.findDistinctTimeframesBySymbolToken(symbolToken)) {
+                backfill(symbolToken, timeframe, runId);
             }
         }
     }
 
     @Async
-    public void backfillAsync(String symbol, String timeframe, String runId) {
-        backfill(symbol, timeframe, runId);
+    public void backfillAsync(List<String> symbolTokens, String timeframe, String runId) {
+        for (String symbolToken : symbolTokens) {
+            backfill(symbolToken, timeframe, runId);
+        }
     }
 
-    private void backfill(String symbol, String timeframe, String runId) {
-        List<BacktestCandle> candles = backtestCandleRepository.findBySymbolAndTimeframeOrderByCandleTimeAsc(symbol, timeframe);
+    private void backfill(String symbolToken, String timeframe, String runId) {
+        List<BacktestCandle> candles = backtestCandleRepository
+                .findBySymbolTokenAndTimeframeOrderByCandleTimeAsc(symbolToken, timeframe);
         if (candles.isEmpty()) {
-            log.info("No backtest candles found for symbol={} timeframe={}", symbol, timeframe);
+            log.info("No backtest candles found for symbolToken={} timeframe={}", symbolToken, timeframe);
             return;
         }
 
-        String seriesKey = symbol + "::" + timeframe + "::" + runId;
+        String symbol = candles.get(0).getSymbol();
+        String seriesKey = symbolToken + "::" + timeframe + "::" + runId;
         List<Double> closes = new ArrayList<>();
         for (BacktestCandle backtestCandle : candles) {
             closes.add(backtestCandle.getClose());
@@ -79,8 +84,10 @@ public class IndicatorBackfillService {
             barSeriesManager.addCandleByKey(seriesKey, timeframe, candle);
             IndicatorResultDto result = indicatorService.calculateIndicatorsBySeriesKey(
                     symbol, timeframe, seriesKey, candle.getSymbolToken(), candle.getCandleTime(), closes);
-                if (!backtestIndicatorRepository.existsBySymbolTokenAndTimeframeAndCandleTime(
-                    candle.getSymbolToken(), timeframe, candle.getCandleTime())) {
+            Optional<BacktestMarketIndicator> existingIndicator = backtestIndicatorRepository
+                    .findBySymbolTokenAndTimeframeAndCandleTime(
+                            candle.getSymbolToken(), candle.getTimeframe(), candle.getCandleTime());
+            if (existingIndicator.isEmpty()) {
                 backtestIndicatorRepository.save(toBacktestIndicator(result, runId));
             }
         }
