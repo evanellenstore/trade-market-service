@@ -88,7 +88,10 @@ public class IndicatorBackfillService {
                     .findBySymbolTokenAndTimeframeAndCandleTime(
                             candle.getSymbolToken(), candle.getTimeframe(), candle.getCandleTime());
             if (existingIndicator.isEmpty()) {
-                backtestIndicatorRepository.save(toBacktestIndicator(result, runId));
+                backtestIndicatorRepository.save(toBacktestIndicator(result, runId, backtestCandle));
+            } else if (existingIndicator.get().getCandle() == null) {
+                existingIndicator.get().attachCandle(backtestCandle);
+                backtestIndicatorRepository.save(existingIndicator.get());
             }
         }
         log.info("Completed indicator backfill: symbol={} timeframe={} candles={} runId={}",
@@ -104,9 +107,11 @@ public class IndicatorBackfillService {
                 .ltp(source.getLtp()).build();
     }
 
-    private BacktestMarketIndicator toBacktestIndicator(IndicatorResultDto value, String runId) {
+    private BacktestMarketIndicator toBacktestIndicator(IndicatorResultDto value, String runId,
+                                                        BacktestCandle candle) {
         return BacktestMarketIndicator.builder().symbol(value.getSymbol()).symbolToken(value.getSymbolToken())
-                .timeframe(value.getTimeframe()).runId(runId).origin("BACKTEST").candleTime(value.getCandleTime())
+                .candle(candle).timeframe(value.getTimeframe()).runId(runId).origin("BACKTEST")
+                .candleTime(value.getCandleTime())
                 .trend_ema(value.getEma()).trend_ema20(value.getEma20()).trend_ema50(value.getEma50())
                 .trend_ema100(value.getEma100()).trend_ema200(value.getEma200()).trend_adx(value.getAdx())
                 .trend_plusDi(value.getPlusDi()).trend_minusDi(value.getMinusDi()).trend_supertrend(value.getSupertrend())

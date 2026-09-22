@@ -2,6 +2,9 @@ package com.trade.market.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -24,7 +27,8 @@ import java.time.LocalDateTime;
         columnList = "symbolToken,timeframe,origin,created_at")
 }, uniqueConstraints = {
     @UniqueConstraint(name = "uk_backtest_indicators_symbol_token_timeframe_candle",
-        columnNames = {"symbolToken", "timeframe", "candle_time"})
+        columnNames = {"symbolToken", "timeframe", "candle_time"}),
+    @UniqueConstraint(name = "uk_backtest_indicator_candle_id", columnNames = "candle_id")
 })
 @Getter
 @Builder
@@ -34,6 +38,10 @@ public class BacktestMarketIndicator {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @OneToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "candle_id")
+    private BacktestCandle candle;
     private String symbol;
     private String symbolToken;
     private String timeframe;
@@ -75,6 +83,10 @@ public class BacktestMarketIndicator {
     private double resistance2;
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    public void attachCandle(BacktestCandle candle) {
+        this.candle = candle;
+    }
 
     @PrePersist
     protected void onCreate() {
