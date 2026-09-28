@@ -70,7 +70,7 @@ logging:
   level:
     root: INFO
     org.springframework.kafka: INFO
-    com.trade.market: DEBUG
+    com.trade.market: INFO
 
 
 broker:
