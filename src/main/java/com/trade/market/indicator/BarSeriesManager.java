@@ -57,7 +57,7 @@ public class BarSeriesManager {
             // First bar
             if (series.isEmpty()) {
                 series.addBar(newBar);
-                log.info("Added first candle [{}:{}] EndTime={}",
+                log.debug("Added first candle [{}:{}] EndTime={}",
                         seriesKey, timeframe, newBar.getEndTime());
                 return;
             }
@@ -69,7 +69,7 @@ public class BarSeriesManager {
             // New candle
             if (newEndTime.isAfter(lastEndTime)) {
                 series.addBar(newBar);
-                log.info("Added new candle [{}:{}] EndTime={}", seriesKey, timeframe, newEndTime);
+                log.debug("Added new candle [{}:{}] EndTime={}", seriesKey, timeframe, newEndTime);
                 return;
             }
             // Duplicate candle
