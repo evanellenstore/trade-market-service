@@ -62,7 +62,9 @@ public class BacktestMarketIndicator {
     private double momentum_macd;
     private double momentum_macdSignal;
     private double momentum_macdHistogram;
+    @Column(name = "momentum_stochastick")
     private double momentum_stochasticK;
+    @Column(name = "momentum_stochasticd")
     private double momentum_stochasticD;
     private double momentum_cci;
     private double momentum_roc;
@@ -75,6 +77,7 @@ public class BacktestMarketIndicator {
     private double volatility_bbMiddle;
     private double volatility_bbLower;
     private double volatility_bbWidth;
+    @Column(name = "volatility_percentb")
     private double volatility_percentB;
     private double pivot;
     private double support1;

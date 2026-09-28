@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.Optional;
 
 public interface BacktestMarketIndicatorRepository extends JpaRepository<BacktestMarketIndicator, Long> {
+    Optional<BacktestMarketIndicator> findByCandle_Id(Long candleId);
+
         Optional<BacktestMarketIndicator> findBySymbolTokenAndTimeframeAndCandleTime(
             String symbolToken, String timeframe, LocalDateTime candleTime);
 

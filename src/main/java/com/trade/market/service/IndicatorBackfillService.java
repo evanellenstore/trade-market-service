@@ -9,24 +9,30 @@ import com.trade.market.entity.Candle;
 import com.trade.market.indicator.BarSeriesManager;
 import com.trade.market.repository.BacktestCandleRepository;
 import com.trade.market.repository.BacktestMarketIndicatorRepository;
+import org.springframework.jdbc.core.JdbcTemplate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class IndicatorBackfillService {
+    private static final int BATCH_SIZE = 500;
+
     private final BacktestCandleRepository backtestCandleRepository;
     private final BacktestMarketIndicatorRepository backtestIndicatorRepository;
     private final IndicatorService indicatorService;
     private final BarSeriesManager barSeriesManager;
+    private final JdbcTemplate jdbcTemplate;
 
     public String start(IndicatorBackfillRequest request) {
         String source = request.getSource() == null ? "BACKTEST" : request.getSource().trim().toUpperCase();
@@ -78,24 +84,113 @@ public class IndicatorBackfillService {
         String symbol = candles.get(0).getSymbol();
         String seriesKey = symbolToken + "::" + timeframe + "::" + runId;
         List<Double> closes = new ArrayList<>();
+        List<BacktestMarketIndicator> indicatorBatch = new ArrayList<>(BATCH_SIZE);
         for (BacktestCandle backtestCandle : candles) {
             closes.add(backtestCandle.getClose());
             Candle candle = toMarketCandle(backtestCandle);
             barSeriesManager.addCandleByKey(seriesKey, timeframe, candle);
             IndicatorResultDto result = indicatorService.calculateIndicatorsBySeriesKey(
                     symbol, timeframe, seriesKey, candle.getSymbolToken(), candle.getCandleTime(), closes);
-            Optional<BacktestMarketIndicator> existingIndicator = backtestIndicatorRepository
-                    .findBySymbolTokenAndTimeframeAndCandleTime(
-                            candle.getSymbolToken(), candle.getTimeframe(), candle.getCandleTime());
-            if (existingIndicator.isEmpty()) {
-                backtestIndicatorRepository.save(toBacktestIndicator(result, runId, backtestCandle));
-            } else if (existingIndicator.get().getCandle() == null) {
-                existingIndicator.get().attachCandle(backtestCandle);
-                backtestIndicatorRepository.save(existingIndicator.get());
+            indicatorBatch.add(toBacktestIndicator(result, runId, backtestCandle));
+            if (indicatorBatch.size() == BATCH_SIZE) {
+                persistIndicatorBatch(indicatorBatch, symbolToken, timeframe);
+                indicatorBatch.clear();
             }
+        }
+        if (!indicatorBatch.isEmpty()) {
+            persistIndicatorBatch(indicatorBatch, symbolToken, timeframe);
         }
         log.info("Completed indicator backfill: symbol={} timeframe={} candles={} runId={}",
                 symbol, timeframe, candles.size(), runId);
+    }
+
+    private void persistIndicatorBatch(List<BacktestMarketIndicator> indicators, String symbolToken,
+                                       String timeframe) {
+        long batchStartedAt = System.nanoTime();
+        String candleIdPlaceholders = String.join(",", Collections.nCopies(indicators.size(), "?"));
+        String findSql = "SELECT id, candle_id, candle_time FROM market_indicators_backtest WHERE "
+                + "candle_id IN (" + candleIdPlaceholders + ") OR "
+                + "(symbol_token = ? AND timeframe = ? AND candle_time >= ? AND candle_time <= ?)";
+        List<Object> queryParameters = new ArrayList<>(indicators.size() + 4);
+        Map<Long, BacktestMarketIndicator> indicatorsByCandleId = new HashMap<>();
+        for (BacktestMarketIndicator indicator : indicators) {
+            Long candleId = indicator.getCandle().getId();
+            queryParameters.add(candleId);
+            indicatorsByCandleId.put(candleId, indicator);
+        }
+        queryParameters.add(symbolToken);
+        queryParameters.add(timeframe);
+        queryParameters.add(indicators.get(0).getCandleTime());
+        queryParameters.add(indicators.get(indicators.size() - 1).getCandleTime());
+
+        Map<Long, ExistingIndicator> existingByCandleId = new HashMap<>();
+        Map<java.time.LocalDateTime, ExistingIndicator> existingByTime = new HashMap<>();
+        jdbcTemplate.query(findSql, resultSet -> {
+            java.time.LocalDateTime candleTime = resultSet.getTimestamp("candle_time").toLocalDateTime();
+            Long candleId = resultSet.getObject("candle_id", Long.class);
+            ExistingIndicator existing = new ExistingIndicator(resultSet.getLong("id"), candleId);
+            if (candleId != null && indicatorsByCandleId.containsKey(candleId)) {
+                existingByCandleId.put(candleId, existing);
+            }
+            existingByTime.put(candleTime, existing);
+        }, queryParameters.toArray());
+
+        List<Object[]> rowsToInsert = new ArrayList<>();
+        List<Object[]> candleLinksToUpdate = new ArrayList<>();
+        for (BacktestMarketIndicator indicator : indicators) {
+            ExistingIndicator existing = existingByCandleId.get(indicator.getCandle().getId());
+            if (existing == null) {
+                existing = existingByTime.get(indicator.getCandleTime());
+            }
+            if (existing == null) {
+                rowsToInsert.add(toInsertParameters(indicator));
+            } else if (existing.candleId() == null) {
+                candleLinksToUpdate.add(new Object[]{indicator.getCandle().getId(), existing.id()});
+            }
+        }
+
+        if (!candleLinksToUpdate.isEmpty()) {
+            jdbcTemplate.batchUpdate("UPDATE market_indicators_backtest SET candle_id = ? "
+                    + "WHERE id = ? AND candle_id IS NULL", candleLinksToUpdate);
+        }
+        if (!rowsToInsert.isEmpty()) {
+            jdbcTemplate.batchUpdate("INSERT INTO market_indicators_backtest "
+                    + "(candle_id, symbol, symbol_token, timeframe, run_id, origin, candle_time, "
+                    + "trend_ema, trend_ema20, trend_ema50, trend_ema100, trend_ema200, trend_adx, "
+                    + "trend_plus_di, trend_minus_di, trend_supertrend, momentum_rsi14, momentum_macd, "
+                    + "momentum_macd_signal, momentum_macd_histogram, momentum_stochastick, "
+                    + "momentum_stochasticd, momentum_cci, momentum_roc, volume_vwap, volume_obv, "
+                    + "volume_mfi, volume_cmf, volatility_atr, volatility_bb_upper, volatility_bb_middle, "
+                    + "volatility_bb_lower, volatility_bb_width, volatility_percentb, pivot, support1, "
+                    + "support2, resistance1, resistance2, created_at) "
+                    + "VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                    + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)", rowsToInsert);
+        }
+        long elapsedMillis = (System.nanoTime() - batchStartedAt) / 1_000_000;
+        System.out.println(" ************************  Indicator backfill batch completed: symbolToken=" + symbolToken
+            + " timeframe=" + timeframe + " batchSize=" + indicators.size()
+            + " inserted=" + rowsToInsert.size() + " linked=" + candleLinksToUpdate.size()
+            + " elapsedMs=" + elapsedMillis);
+    }
+
+    private Object[] toInsertParameters(BacktestMarketIndicator indicator) {
+        return new Object[]{indicator.getCandle().getId(), indicator.getSymbol(), indicator.getSymbolToken(),
+                indicator.getTimeframe(), indicator.getRunId(), indicator.getOrigin(), indicator.getCandleTime(),
+                indicator.getTrend_ema(), indicator.getTrend_ema20(), indicator.getTrend_ema50(),
+                indicator.getTrend_ema100(), indicator.getTrend_ema200(), indicator.getTrend_adx(),
+                indicator.getTrend_plusDi(), indicator.getTrend_minusDi(), indicator.getTrend_supertrend(),
+                indicator.getMomentum_rsi14(), indicator.getMomentum_macd(), indicator.getMomentum_macdSignal(),
+                indicator.getMomentum_macdHistogram(), indicator.getMomentum_stochasticK(),
+                indicator.getMomentum_stochasticD(), indicator.getMomentum_cci(), indicator.getMomentum_roc(),
+                indicator.getVolume_vwap(), indicator.getVolume_obv(), indicator.getVolume_mfi(),
+                indicator.getVolume_cmf(), indicator.getVolatility_atr(), indicator.getVolatility_bbUpper(),
+                indicator.getVolatility_bbMiddle(), indicator.getVolatility_bbLower(),
+                indicator.getVolatility_bbWidth(), indicator.getVolatility_percentB(), indicator.getPivot(),
+                indicator.getSupport1(), indicator.getSupport2(), indicator.getResistance1(),
+                indicator.getResistance2()};
+    }
+
+    private record ExistingIndicator(Long id, Long candleId) {
     }
 
     private Candle toMarketCandle(BacktestCandle source) {
