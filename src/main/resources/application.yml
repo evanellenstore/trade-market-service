@@ -6,7 +6,7 @@ spring:
     name: trade-market-service
 
   datasource:
-    url: jdbc:mysql://localhost:3306/tradding_db
+    url: ${DB_URL:jdbc:mysql://localhost:3306/tradding_db}
     username: root
     password: ellenverma
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -22,7 +22,7 @@ spring:
         format_sql: true
 
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
     consumer:
       group-id: market-service
@@ -75,4 +75,4 @@ logging:
 
 broker:
   service:
-    url: http://localhost:3077/broker
+    url: ${BROKER_SERVICE_URL:http://localhost:3077/broker}
