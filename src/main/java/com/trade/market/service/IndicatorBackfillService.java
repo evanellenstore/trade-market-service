@@ -27,6 +27,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class IndicatorBackfillService {
     private static final int BATCH_SIZE = 500;
+    private static final int SERIES_MAX_BAR_COUNT = 1000;
 
     private final BacktestCandleRepository backtestCandleRepository;
     private final BacktestMarketIndicatorRepository backtestIndicatorRepository;
@@ -74,39 +75,49 @@ public class IndicatorBackfillService {
     }
 
     private void backfill(String symbolToken, String timeframe, String runId) {
+
+        System.out.println("-----findBySymbolTokenAndTimeframeOrderByCandleTimeAsc-----");
         List<BacktestCandle> candles = backtestCandleRepository
                 .findBySymbolTokenAndTimeframeOrderByCandleTimeAsc(symbolToken, timeframe);
         if (candles.isEmpty()) {
             log.info("No backtest candles found for symbolToken={} timeframe={}", symbolToken, timeframe);
             return;
         }
+        System.out.println("=========== Number of candles found: " + candles.size());
 
         String symbol = candles.get(0).getSymbol();
         String seriesKey = symbolToken + "::" + timeframe + "::" + runId;
         List<Double> closes = new ArrayList<>();
         List<BacktestMarketIndicator> indicatorBatch = new ArrayList<>(BATCH_SIZE);
+        long batchStartedAt = System.nanoTime();
+
+       
         for (BacktestCandle backtestCandle : candles) {
             closes.add(backtestCandle.getClose());
+            if (closes.size() > SERIES_MAX_BAR_COUNT) {
+                closes.remove(0);
+            }
             Candle candle = toMarketCandle(backtestCandle);
-            barSeriesManager.addCandleByKey(seriesKey, timeframe, candle);
-            IndicatorResultDto result = indicatorService.calculateIndicatorsBySeriesKey(
-                    symbol, timeframe, seriesKey, candle.getSymbolToken(), candle.getCandleTime(), closes);
+            barSeriesManager.addCandleByKey(seriesKey, timeframe, candle, SERIES_MAX_BAR_COUNT);
+            IndicatorResultDto result = indicatorService.calculateIndicatorsBySeriesKey(symbol, timeframe, seriesKey, candle.getSymbolToken(), candle.getCandleTime(), closes);
             indicatorBatch.add(toBacktestIndicator(result, runId, backtestCandle));
+            
+            
             if (indicatorBatch.size() == BATCH_SIZE) {
-                persistIndicatorBatch(indicatorBatch, symbolToken, timeframe);
+                persistIndicatorBatch(indicatorBatch, symbolToken, timeframe, batchStartedAt);
                 indicatorBatch.clear();
+                batchStartedAt = System.nanoTime();
             }
         }
         if (!indicatorBatch.isEmpty()) {
-            persistIndicatorBatch(indicatorBatch, symbolToken, timeframe);
+            persistIndicatorBatch(indicatorBatch, symbolToken, timeframe, batchStartedAt);
         }
         log.info("Completed indicator backfill: symbol={} timeframe={} candles={} runId={}",
                 symbol, timeframe, candles.size(), runId);
     }
 
     private void persistIndicatorBatch(List<BacktestMarketIndicator> indicators, String symbolToken,
-                                       String timeframe) {
-        long batchStartedAt = System.nanoTime();
+                                       String timeframe, long batchStartedAt) {
         String candleIdPlaceholders = String.join(",", Collections.nCopies(indicators.size(), "?"));
         String findSql = "SELECT id, candle_id, candle_time FROM market_indicators_backtest WHERE "
                 + "candle_id IN (" + candleIdPlaceholders + ") OR "
@@ -166,11 +177,9 @@ public class IndicatorBackfillService {
                     + "VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
                     + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)", rowsToInsert);
         }
-        long elapsedMillis = (System.nanoTime() - batchStartedAt) / 1_000_000;
-        System.out.println(" ************************  Indicator backfill batch completed: symbolToken=" + symbolToken
-            + " timeframe=" + timeframe + " batchSize=" + indicators.size()
-            + " inserted=" + rowsToInsert.size() + " linked=" + candleLinksToUpdate.size()
-            + " elapsedMs=" + elapsedMillis);
+        long elapsedSeconds = (System.nanoTime() - batchStartedAt) / 1_000_000_000;
+        
+        System.out.println(" ------------- Indicator backfill batch completed: symbolToken=" + symbolToken+ " timeframe=" + timeframe + " timeTaken=" + elapsedSeconds + " seconds"+ " inserted=" + rowsToInsert.size() );
     }
 
     private Object[] toInsertParameters(BacktestMarketIndicator indicator) {

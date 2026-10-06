@@ -33,12 +33,19 @@ public class BarSeriesManager {
     }
 
     public void addCandleByKey(String seriesKey, String timeframe, Candle candle) {
+        addCandleByKey(seriesKey, timeframe, candle, null);
+    }
+
+    public void addCandleByKey(String seriesKey, String timeframe, Candle candle, Integer maximumBarCount) {
         String storageKey = buildKey(seriesKey, timeframe);
         ReentrantLock lock = locks.computeIfAbsent(storageKey, k -> new ReentrantLock());
 
         lock.lock();
         try {
             BarSeries series = getOrCreateSeriesByKey(seriesKey, timeframe);
+            if (maximumBarCount != null) {
+                series.setMaximumBarCount(maximumBarCount);
+            }
 
             ZonedDateTime beginTime = candle.getStartTime()
                     .atZone(ZoneId.of("UTC"));
